@@ -9,6 +9,11 @@
    [app.common.exceptions :as ex]
    [app.common.logging :as l]
    [app.common.transit :as t]
+   [app.common.types.shape :as cts]
+   [app.common.geom.rect :as ctr]
+   [app.common.geom.matrix :as ctm]
+   [app.common.geom.point :as ctp]
+   [app.common.uuid :as ctu]
    [app.config :as cf]
    [clojure.data.json :as json]
    [cuerdas.core :as str]
@@ -42,6 +47,46 @@
   [k]
   (-> k str/kebab keyword))
 
+(defn- read-json-value
+  [k, v]
+  (cond
+    (and (= k :type) (not (#{ "paragraph" "paragraph-set" "root" } v))) (-> v keyword)
+    (#{:attr :constraints-h :constraints-v :blend-mode :stroke-style :stroke-alignment :style :layout :layout-padding-type :layout-justify-content :layout-justify-items :layout-align-content :layout-align-items :layout-flex-dir :layout-wrap-type :layout-item-h-sizing :layout-item-v-sizing :layout-item-align-self :grow-type :command :bool-type} k) (-> v keyword)
+    (#{:id :old-id :shape-ref :fill-color-ref-id :fill-color-ref-file :stroke-color-ref-id :stroke-color-ref-file :typography-ref-id :typography-ref-file :component-id :component-file :main-instance-page :main-instance-id} k) (-> v ctu/uuid)
+    (= k :points) (if (coll? v)
+                    (vec (map ctp/map->Point v))
+                    (vec [(ctp/map->Point v)]))
+    (= k :touched) (if (coll? v)
+                    (set (map keyword v))
+                    nil)
+    (= k :selrect) (-> v ctr/map->Rect)
+    (= k :transform) (-> v ctm/map->Matrix)
+    (= k :transform-inverse) (-> v ctm/map->Matrix)
+    (= k :obj) (-> v cts/map->Shape)
+    (= k :operations) (vec (map (fn [item]
+                                   (cond
+                                     (= (:attr item) :points) (update item :val (fn [points]
+                                                                                  (if (coll? points)
+                                                                                    (vec (map ctp/map->Point points))
+                                                                                    (vec [(ctp/map->Point points)]))))
+                                     (= (:attr item) :selrect) (update item :val ctr/map->Rect)
+                                     (= (:attr item) :transform) (update item :val ctm/map->Matrix)
+                                     (= (:attr item) :transform-inverse) (update item :val ctm/map->Matrix)
+                                     (= (:attr item) :shapes) (update item :val (fn [shapes]
+                                                                                  (if (coll? shapes)
+                                                                                    (vec (map ctu/uuid shapes))
+                                                                                    (vec [(ctu/uuid shapes)]))))
+                                     (= (:attr item) :touched) (update item :val (fn [touched]
+                                                                                  (if (coll? touched)
+                                                                                    (set (map keyword touched))
+                                                                                    nil)))
+                                     (#{:parent-id :frame-id :id :shape-ref :fill-color-ref-id :fill-color-ref-file :stroke-color-ref-id :stroke-color-ref-file :typography-ref-id :typography-ref-file :component-id :component-file :main-instance-page :main-instance-id} (:attr item)) (update item :val ctu/uuid)
+                                     (#{:type :constraints-h :constraints-v :blend-mode :stroke-style :stroke-alignment :style :layout :layout-padding-type :layout-justify-content :layout-justify-items :layout-align-content :layout-align-items :layout-flex-dir :layout-wrap-type :layout-item-h-sizing :layout-item-v-sizing :layout-item-align-self :grow-type :command :bool-type} (:attr item)) (update item :val keyword)
+                                     :else item))
+                                 v))
+    (= k :shapes) (vec (map ctu/uuid v))
+    :else v))
+
 (defn- write-json-key
   [k]
   (if (or (keyword? k) (symbol? k))
@@ -62,7 +107,7 @@
 
                 (str/starts-with? header "application/json")
                 (with-open [reader (get-reader request)]
-                  (let [params (json/read reader :key-fn read-json-key)]
+                  (let [params (json/read reader :key-fn read-json-key :value-fn read-json-value)]
                     (-> request
                         (assoc :body-params params)
                         (update :params merge params))))
