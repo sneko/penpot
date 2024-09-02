@@ -23,6 +23,8 @@ export PENPOT_FLAGS="\
 
 export OPTIONS="
        -A:jmx-remote -A:dev \
+       -J-Xmx4g \
+       -J-XX:+AlwaysPreTouch \
        -J-Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager \
        -J-Djdk.attach.allowAttachSelf \
        -J-Dpolyglot.engine.WarnInterpreterOnly=false \
