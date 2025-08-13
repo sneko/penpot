@@ -54,6 +54,8 @@ export PENPOT_OBJECTS_STORAGE_S3_BUCKET=penpot
 entrypoint=${1:-app.main};
 
 export JAVA_OPTS="\
+       -Xmx4g \
+       -XX:+AlwaysPreTouch \
        -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager \
        -Djdk.attach.allowAttachSelf \
        -Dlog4j2.configurationFile=log4j2-devenv.xml \
