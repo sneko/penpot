@@ -12,6 +12,11 @@
    [app.common.schema :as-alias sm]
    [app.common.transit :as t]
    [app.config :as cf]
+   [app.common.types.shape :as cts]
+   [app.common.geom.rect :as ctr]
+   [app.common.geom.matrix :as ctm]
+   [app.common.geom.point :as ctp]
+   [app.common.uuid :as ctu]
    [app.http.errors :as errors]
    [app.util.pointer-map :as pmap]
    [cuerdas.core :as str]
@@ -41,6 +46,49 @@
     (java.io.BufferedReader.
      (java.io.InputStreamReader. body))))
 
+(defn- read-json-value
+  [k v]
+  (let [uuid-keys #{:id :old-id :shape-ref
+                    :fill-color-ref-id :fill-color-ref-file
+                    :stroke-color-ref-id :stroke-color-ref-file
+                    :typography-ref-id :typography-ref-file
+                    :component-id :component-file
+                    :main-instance-page :main-instance-id}
+        convert-uuids (fn [m]
+                        (reduce-kv (fn [m2 k2 v2]
+                                     (assoc m2 k2 (if (and (uuid-keys k2)
+                                                           (string? v2))
+                                                    (ctu/uuid v2)
+                                                    v2)))
+                                   {}
+                                   m))]
+    (cond
+      ;; top-level UUID fields
+      (and (uuid-keys k) (string? v)) (ctu/uuid v)
+
+      ;; operations array
+      (= k :operations)
+      (vec
+       (map (fn [item]
+              (cond
+                ;; `:set` op with UUID in :val
+                (and (uuid-keys (:attr item))
+                     (string? (:val item)))
+                (update item :val ctu/uuid)
+
+                ;; `:assign` op — convert UUIDs inside :value map
+                (= (:type item) "assign") ; might be keyword :assign
+                (update item :value convert-uuids)
+
+                :else item))
+            v))
+
+      ;; shapes array of UUIDs
+      (= k :shapes)
+      (vec (map #(if (string? %) (ctu/uuid %) %) v))
+
+      :else v)))
+
 (defn wrap-parse-request
   [handler]
   (letfn [(process-request [request]
@@ -55,7 +103,7 @@
 
                 (str/starts-with? header "application/json")
                 (with-open [reader (get-reader request)]
-                  (let [params (json/read reader :key-fn json/read-kebab-key)]
+                  (let [params (json/read reader :key-fn json/read-kebab-key :value-fn read-json-value)]
                     (-> request
                         (assoc :body-params params)
                         (update :params merge params))))
