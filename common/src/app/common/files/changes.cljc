@@ -320,7 +320,9 @@
      [:shapes {:optional true} [:vector {:gen/max 3} ::sm/any]]
      [:path {:optional true} :string]
      [:main-instance-id ::sm/uuid]
-     [:main-instance-page ::sm/uuid]]]
+     [:main-instance-page ::sm/uuid]
+     [:variant-id {:optional true} ::sm/uuid]
+     [:variant-properties {:optional true} [:vector ::ctv/variant-property]]]]
 
    [:mod-component
     [:map {:title "ModCompoenentChange"}
