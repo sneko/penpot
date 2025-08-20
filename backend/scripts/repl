@@ -90,7 +90,7 @@ export OPTIONS="-A:jmx-remote -A:dev"
 
 # Setup HEAP
 # export OPTIONS="$OPTIONS -J-Xms50m -J-Xmx1024m"
-export OPTIONS="$OPTIONS -J-Xms50m Xmx4000m"
+export OPTIONS="$OPTIONS -J-Xms50m -J-Xmx4000m"
 
 # Increase virtual thread pool size
 # export OPTIONS="$OPTIONS -J-Djdk.virtualThreadScheduler.parallelism=16"
