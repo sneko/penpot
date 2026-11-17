@@ -32,7 +32,8 @@
 }
 
 .submenu {
-  position: absolute;
+  // Placed from its entry when it opens, not clipped by a parent submenu
+  position: fixed;
 }
 
 .menu-item {

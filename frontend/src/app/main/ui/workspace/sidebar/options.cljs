@@ -12,6 +12,7 @@
    [app.common.files.helpers :as cfh]
    [app.common.geom.shapes :as gsh]
    [app.common.types.shape.layout :as ctl]
+   [app.config :as cf]
    [app.main.data.helpers :as dsh]
    [app.main.data.workspace :as udw]
    [app.main.data.workspace.common :as dwc]
@@ -31,6 +32,7 @@
    [app.main.ui.workspace.sidebar.options.menus.grid-cell :as grid-cell]
    [app.main.ui.workspace.sidebar.options.menus.interactions :refer [interactions-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.layout-container :as layout-container]
+   [app.main.ui.workspace.sidebar.options.menus.token-context :refer [page-token-context-menu* shapes-token-context-menu*]]
    [app.main.ui.workspace.sidebar.options.page :as page]
    [app.main.ui.workspace.sidebar.options.shapes.bool :as bool]
    [app.main.ui.workspace.sidebar.options.shapes.circle :as circle]
@@ -211,16 +213,23 @@
         {:drawing-state drawing}]
 
        (zero? total-selected)
-       [:> page/options*]
+       [:*
+        (when (contains? cf/flags :token-scoped-themes)
+          [:> page-token-context-menu* {}])
+        [:> page/options*]]
 
        :else
-       [:> shape-options*
-        {:shapes shapes
-         :shapes-with-children shapes-with-children
-         :page-id page-id
-         :file-id file-id
-         :selected selected
-         :libraries libraries}])]))
+       [:*
+        ;; Near the top, as the variable modes in Figma's sidebar
+        (when (contains? cf/flags :token-scoped-themes)
+          [:> shapes-token-context-menu* {:shapes shapes}])
+        [:> shape-options*
+         {:shapes shapes
+          :shapes-with-children shapes-with-children
+          :page-id page-id
+          :file-id file-id
+          :selected selected
+          :libraries libraries}]])]))
 
 (mf/defc inspect-tab*
   {::mf/private true}

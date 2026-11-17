@@ -5,9 +5,12 @@
 ;; Copyright (c) KALEIDOS SUBSIDIARY SL
 
 (ns app.main.ui.workspace.viewport.token-scopes
-  "Outlines of the token scopes on the canvas: every shape with a
+  "Outlines of the token scopes on the canvas: a selected shape with a
   `:token-scope` gets an outline and a badge with its themes. Clicking a
-  badge opens a menu to toggle the themes of the scope or remove it."
+  badge opens a menu to toggle the themes of the scope or remove it.
+  Like Figma, which shows no mode on the canvas, the shapes that are
+  not selected show nothing: a design system sets contexts on most of
+  its components."
   (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data.macros :as dm]
@@ -158,13 +161,14 @@
   {::mf/wrap [mf/memo]}
   [{:keys [objects selected zoom]}]
   (let [tokens-lib (mf/deref refs/tokens-lib)
-        shapes     (mf/with-memo [objects]
+        shapes     (mf/with-memo [objects selected]
                      (into []
-                           (filter (fn [shape]
-                                     (and (some? (:token-scope shape))
-                                          (not= (:id shape) uuid/zero)
-                                          (not (:hidden shape)))))
-                           (vals objects)))]
+                           (comp (keep #(get objects %))
+                                 (filter (fn [shape]
+                                           (and (some? (:token-scope shape))
+                                                (not= (:id shape) uuid/zero)
+                                                (not (:hidden shape))))))
+                           selected))]
     (when tokens-lib
       [:g {:class (stl/css :token-scope-areas)}
        (for [shape shapes]

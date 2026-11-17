@@ -12,7 +12,6 @@
    [app.common.logging :as l]
    [app.common.time :as ct]
    [app.common.types.token :as ctt]
-   [app.common.types.tokens-status :as ctos]
    [app.config :as cf]
    [app.main.data.changes :as dch]
    [app.main.data.helpers :as dsh]
@@ -21,6 +20,7 @@
    [app.main.data.workspace.shapes :as dwsh]
    [app.main.data.workspace.thumbnails :as dwt]
    [app.main.data.workspace.tokens.application :as dwta]
+   [app.main.data.workspace.tokens.scoped-resolution :as dwtsr]
    [app.main.data.workspace.undo :as dwu]
    [beicon.v2.core :as rx]
    [clojure.data :as data]
@@ -105,9 +105,10 @@
          tokens {}]
     (if-let [[shape-id {:keys [applied-tokens] :as shape}] (first items)]
       (let [applied-tokens
-            (-> (invert-collect-key-vals applied-tokens (resolve-for-shape shape-id) shape)
-                (shape-ids-by-values shape-id)
-                (split-attribute-groups))
+            (when (seq applied-tokens)
+              (-> (invert-collect-key-vals applied-tokens (resolve-for-shape shape-id) shape)
+                  (shape-ids-by-values shape-id)
+                  (split-attribute-groups)))
 
             parent-frame-id
             (cfh/get-shape-id-root-frame objects shape-id)]
@@ -151,44 +152,40 @@
                       (pcb/with-page page)
                       (pcb/mod-page {:background color})))))))))
 
-(defn- scoped-resolver
-  "A fn from a shape id of `page` (nil for the page itself) to the
-  resolved tokens its token scopes give (see `cfo/scope-chain`):
-  `resolved-tokens` when no scope applies, else the tokens of the chain's
-  effective status, resolved once per distinct combination of active
-  sets. Without the flag every shape gets `resolved-tokens`."
-  [state resolved-tokens page]
-  (if (and (contains? cf/flags :token-scoped-themes)
-           (contains? cf/flags :tokenscript))
-    (let [tokens-lib    (dsh/lookup-tokens-lib state)
-          tokens-status (dsh/lookup-tokens-status state)
-          objects       (:objects page)
-          cache         (volatile! {(ctos/get-active-set-ids tokens-status) resolved-tokens})]
-      (fn [shape-id]
-        (let [chain (cfo/scope-chain page objects shape-id)]
-          (if (empty? chain)
-            resolved-tokens
-            (let [status  (cfo/effective-tokens-status tokens-status tokens-lib chain)
-                  set-ids (ctos/get-active-set-ids status)]
-              (or (get @cache set-ids)
-                  (let [resolved (ts/resolve-sets (cfo/get-active-token-sets status tokens-lib))]
-                    (vswap! cache assoc set-ids resolved)
-                    resolved)))))))
-    (constantly resolved-tokens)))
+(defn- restrict-objects
+  "The objects of `objects` whose id is in `ids` or that are children of
+  one, or all of them when `ids` is nil."
+  [objects ids]
+  (if (nil? ids)
+    objects
+    (select-keys objects
+                 (into #{}
+                       (mapcat #(cfh/get-children-ids-with-self objects %))
+                       ids))))
 
 (defn propagate-tokens
   "Propagate tokens values to all shapes and page backgrounds where they
-  are applied"
-  [state resolved-tokens]
+  are applied. With `ids-by-page`, a map of page ids to shape ids, only to
+  those shapes and their children."
+  ([state resolved-tokens]
+   (propagate-tokens state resolved-tokens nil))
+  ([state resolved-tokens ids-by-page]
   (let [file-id         (get state :current-file-id)
         current-page-id (get state :current-page-id)
         fdata           (dsh/lookup-file-data state file-id)
+        tokens-lib      (dsh/lookup-tokens-lib state)
+        tokens-status   (dsh/lookup-tokens-status state)
+        page-ids        (if ids-by-page
+                          (filter #(contains? ids-by-page %) (:pages fdata))
+                          (:pages fdata))
         tpoint          (ct/tpoint-ms)]
 
     (l/inf :status "START" :hint "propagate-tokens")
     (->> (rx/concat
-          (rx/of current-page-id)
-          (->> (rx/from (:pages fdata))
+          (if (some #(= current-page-id %) page-ids)
+            (rx/of current-page-id)
+            (rx/empty))
+          (->> (rx/from page-ids)
                (rx/filter (fn [id] (not= id current-page-id)))))
          (rx/mapcat
           (fn [page-id]
@@ -196,10 +193,12 @@
                   (dsh/get-page fdata page-id)
 
                   resolve-for-shape
-                  (scoped-resolver state resolved-tokens page)
+                  (dwtsr/make-resolver tokens-status tokens-lib resolved-tokens page)
 
                   [attrs frame-ids text-ids]
-                  (collect-shapes-update-info resolve-for-shape (:objects page))
+                  (collect-shapes-update-info resolve-for-shape
+                                              (restrict-objects (:objects page)
+                                                                (get ids-by-page page-id)))
 
                   actions
                   (actionize-shapes-update-info page-id attrs)
@@ -217,7 +216,7 @@
                (when (seq observable) (apply rx/merge observable))
                (when (seq normal) (rx/concat-all (rx/of normal)))
 
-               (when (:background-token page)
+               (when (and (:background-token page) (nil? ids-by-page))
                  (rx/of (update-canvas-background page-id (resolve-for-shape nil))))
 
                (->> (rx/from frame-ids)
@@ -233,10 +232,14 @@
          (rx/finalize
           (fn [_]
             (let [elapsed (tpoint)]
-              (l/inf :status "END" :hint "propagate-tokens" :elapsed elapsed)))))))
+              (l/inf :status "END" :hint "propagate-tokens" :elapsed elapsed))))))))
 
 (defn propagate-workspace-tokens
-  []
+  "Propagate the token values to the shapes of the file, or with
+  `ids-by-page` (see `propagate-tokens`) to those shapes only."
+  ([]
+   (propagate-workspace-tokens nil))
+  ([ids-by-page]
   (ptk/reify ::propagate-workspace-tokens
     ptk/WatchEvent
     (watch [_ state _]
@@ -257,9 +260,9 @@
                      ;; should be done with a changes_builder and sending only one `commit-changes` instead
                      ;; of creating lots of `update-shapes`.
                      (rx/of (dwsh/update-shapes-buffer-start))
-                     (->> (propagate-tokens state sd-tokens)
+                     (->> (propagate-tokens state sd-tokens ids-by-page)
                           (rx/catch #(rx/concat
                                       (rx/of (dwsh/update-shapes-buffer-stop))
                                       (rx/throw %))))
                      (rx/of (dwsh/update-shapes-buffer-stop))
-                     (rx/of (dwu/commit-undo-transaction undo-id))))))))))))
+                     (rx/of (dwu/commit-undo-transaction undo-id)))))))))))))

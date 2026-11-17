@@ -639,6 +639,16 @@
     (deactivate-theme tokens-status tokens-lib id)))
 
 ;; Token scopes: theme overrides on pages and shapes
+;;
+;; A scope (see `cto/schema:token-scope`) names the themes a page or a
+;; shape activates for itself and its children. It works like a CSS
+;; cascade, the same way Figma resolves the variable modes set on frames:
+;; - a theme group no scope names keeps the theme the file activates for
+;;   it (the node inherits it, "Auto" in Figma);
+;; - the nearest scope naming a group decides the theme of that group;
+;; - an :isolated scope ignores the file and the scopes above it;
+;; - when two groups define the same token name, the token of the nearest
+;;   scope wins, not the one that comes last in the set order.
 
 (defn apply-token-scope
   "Fold a token scope (see `cto/schema:token-scope`) onto `tokens-status`.
@@ -653,22 +663,60 @@
 
 (defn effective-tokens-status
   "The status a chain of scopes resolves tokens with, the outermost scope
-   first. Without scopes it is `tokens-status`, the file's. The outermost
-   scope does not inherit the file's themes, so changing those leaves the
-   shapes under a scope alone; it starts from an empty status, and every
-   scope below it is folded on top, the nearest winning."
+   first: the file's `tokens-status` with every scope folded on top, the
+   nearest one winning. A group no scope names keeps the file's theme.
+   Without scopes it is `tokens-status`."
   [tokens-status tokens-lib scopes]
-  (if (seq scopes)
-    (reduce #(apply-token-scope %1 tokens-lib %2) (ctos/make-tokens-status) scopes)
-    tokens-status))
+  (reduce #(apply-token-scope %1 tokens-lib %2) tokens-status scopes))
 
-(defn file-scope
-  "A scope with the file's active themes, for a scope that starts as the
-   file's context and changes on its own from then on."
-  [tokens-status tokens-lib]
-  {:themes (into #{}
-                 (comp (remove ctob/hidden-theme?) (map :id))
-                 (get-active-themes tokens-status tokens-lib))})
+(defn- theme-depths
+  "A map from each theme of `active-theme-ids` that a scope of `scopes`
+   names to the depth of the nearest such scope (1 for the outermost)."
+  [scopes active-theme-ids]
+  (reduce-kv (fn [acc index {:keys [themes]}]
+               (reduce (fn [acc theme-id]
+                         (cond-> acc
+                           (contains? active-theme-ids theme-id)
+                           (assoc theme-id (inc index))))
+                       acc
+                       themes))
+             {}
+             (vec scopes)))
+
+(defn scoped-set-ids
+  "The ids of the sets a chain of scopes resolves tokens with (see
+   `effective-tokens-status`), in merge order, the later winning on a
+   token name: the sets the file activates, in set order, then the sets
+   of the scopes' themes, the farthest scope first. So the nearest scope
+   decides between two groups that define the same token name."
+  [tokens-status tokens-lib scopes]
+  (let [status    (effective-tokens-status tokens-status tokens-lib scopes)
+        active    (ctos/get-active-set-ids status)
+        depths    (theme-depths scopes (ctos/get-active-theme-ids status))
+        set-depth (reduce-kv (fn [acc theme-id depth]
+                               (reduce (fn [acc set-name]
+                                         (if-let [set (ctob/get-set-by-name tokens-lib set-name)]
+                                           (update acc (ctob/get-id set) (fnil max 0) depth)
+                                           acc))
+                                       acc
+                                       (:sets (ctob/get-theme tokens-lib theme-id))))
+                             {}
+                             depths)]
+    (->> (ctob/get-sets tokens-lib)
+         (map ctob/get-id)
+         (filter active)
+         (map-indexed vector)
+         (sort-by (fn [[index id]] [(get set-depth id 0) index]))
+         (mapv second))))
+
+(defn get-tokens-in-sets
+  "The tokens of the sets of `set-ids` merged in that order, the later set
+   winning on a token name."
+  [tokens-lib set-ids]
+  (reduce (fn [tokens set-id]
+            (merge tokens (ctob/get-tokens tokens-lib set-id)))
+          (d/ordered-map)
+          set-ids))
 
 (defn scope-chain
   "The scopes a shape resolves tokens under, outermost first: the page's,
@@ -686,6 +734,126 @@
                   (when token-scope
                     (assoc token-scope :origin id))))
           shapes)))
+
+(defn- value-references
+  "The names of the tokens a token value references, in strings, maps
+   (composite tokens) and sequences (shadows)."
+  [value]
+  (cond
+    (string? value)     (cto/find-token-value-references value)
+    (map? value)        (into #{} (mapcat value-references) (vals value))
+    (sequential? value) (into #{} (mapcat value-references) value)
+    :else               #{}))
+
+(defn- token-names-with-references
+  "`token-names` and the names of every token they reference, directly
+   or through other references, in any set of the library."
+  [tokens-lib token-names]
+  (let [sets (ctob/get-sets tokens-lib)]
+    (loop [pending (seq token-names)
+           seen    #{}]
+      (if-let [token-name (first pending)]
+        (if (contains? seen token-name)
+          (recur (rest pending) seen)
+          (let [references (into #{}
+                                 (mapcat #(some-> (get (ctob/get-tokens- %) token-name)
+                                                  (:value)
+                                                  (value-references)))
+                                 sets)]
+            (recur (concat (rest pending) references)
+                   (conj seen token-name))))
+        seen))))
+
+(defn relevant-theme-groups
+  "The names of the theme groups that change a token of `token-names`,
+   the tokens applied to some shapes: groups with a theme whose sets
+   define one of them or a token they reference. The groups to propose
+   in a token context, as Figma proposes the variable collections a
+   frame uses."
+  [tokens-lib token-names]
+  (let [names (token-names-with-references tokens-lib token-names)]
+    (into #{}
+          (comp (remove ctob/hidden-theme?)
+                (filter (fn [theme]
+                          (some (fn [set-name]
+                                  (when-let [set (ctob/get-set-by-name tokens-lib set-name)]
+                                    (some #(contains? (ctob/get-tokens- set) %) names)))
+                                (:sets theme))))
+                (map :group))
+          (ctob/get-themes tokens-lib))))
+
+(defn- theme-ids-by-group
+  [tokens-lib scope]
+  (into {}
+        (keep (fn [id]
+                (when-let [theme (ctob/get-theme tokens-lib id)]
+                  [(:group theme) id])))
+        (:themes scope)))
+
+(defn copy-scope-overrides
+  "The scope `after` of a component copy changed from `before`, with
+   its overrides: those of `before`, plus the theme groups whose theme
+   changes in `:overrides` and `:mode-overridden` when the mode
+   changes."
+  [tokens-lib before after]
+  (let [themes-before (theme-ids-by-group tokens-lib before)
+        themes-after  (theme-ids-by-group tokens-lib after)
+        changed       (into #{}
+                            (filter #(not= (get themes-before %) (get themes-after %)))
+                            (concat (keys themes-before) (keys themes-after)))]
+    (cond-> (assoc after :overrides (into (or (:overrides before) #{}) changed))
+      (or (:mode-overridden before) (not= (:mode before) (:mode after)))
+      (assoc :mode-overridden true))))
+
+(defn merge-copy-scope
+  "The scope of a component copy synced with `main-scope`, the scope of
+   its main: the copy keeps its choices for the groups (and the mode) of
+   its `:overrides` (and its mode with `:mode-overridden`) and follows
+   the main for the others, as Figma keeps the variable modes an
+   instance sets apart."
+  [tokens-lib main-scope copy-scope]
+  (let [overrides   (or (:overrides copy-scope) #{})
+        overridden? (fn [id]
+                      (contains? overrides (:group (ctob/get-theme tokens-lib id))))
+        themes      (into (into #{} (remove overridden?) (:themes main-scope))
+                          (filter overridden?)
+                          (:themes copy-scope))
+        mode-overridden? (:mode-overridden copy-scope)
+        mode        (if mode-overridden?
+                      (:mode copy-scope)
+                      (:mode main-scope))]
+    (cond-> {:themes themes :overrides overrides}
+      (some? mode)     (assoc :mode mode)
+      mode-overridden? (assoc :mode-overridden true))))
+
+(defn theme-origin-by-group
+  "For each theme group, the theme a shape under the scopes of `chain`
+   (outermost first, each with its :origin, see `scope-chain`) resolves
+   with and where it comes from: `{group {:theme-id id :origin o}}`, the
+   origin being :file, :page or the id of the shape whose scope sets it.
+   An :isolated scope drops what comes from above it. A group without an
+   active theme is absent."
+  [tokens-status tokens-lib chain]
+  (let [group-of  #(:group (ctob/get-theme tokens-lib %))
+        add-theme (fn [acc theme-id origin]
+                    (if-let [group (group-of theme-id)]
+                      (assoc acc group {:theme-id theme-id :origin origin})
+                      acc))
+        file      (reduce #(add-theme %1 %2 :file)
+                          {}
+                          (ctos/get-active-theme-ids tokens-status))]
+    (reduce (fn [acc {:keys [themes mode origin]}]
+              (reduce #(add-theme %1 %2 origin)
+                      (if (= mode :isolated) {} acc)
+                      themes))
+            file
+            chain)))
+
+(defn scope-chain-key
+  "The scopes of `chain` without their origin: two shapes with the same
+   key resolve their tokens the same way."
+  [chain]
+  (mapv #(dissoc % :origin) chain))
 
 (defn get-active-sets
   "Return a clojure set of the active sets, resolved from TokensStatus + TokensLib."
@@ -802,6 +970,12 @@
   in the given order, later sets taking precedence."
   [sets]
   (mapv (fn [set] [(ctob/get-id set) (ctob/get-tokens- set)]) sets))
+
+(defn get-token-sets-in-order
+  "The sets of `set-ids` unmerged (see `token-set-entries`), in that
+  order, later sets taking precedence. Ids of deleted sets are skipped."
+  [tokens-lib set-ids]
+  (token-set-entries (keep #(ctob/get-set tokens-lib %) set-ids)))
 
 (defn get-active-token-sets
   "The active sets unmerged (see `token-set-entries`), the sets

@@ -100,6 +100,10 @@
    :bool-content            :content-group
    :exports                 :exports-group
    :grids                   :grids-group
+   ;; The token themes a board, group or copy resolves its tokens with: a
+   ;; main sets a default for its copies, and a copy that picks its own
+   ;; keeps it on sync
+   :token-scope             :token-scope-group
 
    :show-content            :show-content
 

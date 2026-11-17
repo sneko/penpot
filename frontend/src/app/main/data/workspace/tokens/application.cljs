@@ -28,6 +28,7 @@
    [app.main.data.workspace.colors :as wdc]
    [app.main.data.workspace.shape-layout :as dwsl]
    [app.main.data.workspace.shapes :as dwsh]
+   [app.main.data.workspace.tokens.scoped-resolution :as dwtsr]
    [app.main.data.workspace.transforms :as dwtr]
    [app.main.data.workspace.undo :as dwu]
    [app.main.data.workspace.wasm-text :as dwwt]
@@ -734,7 +735,13 @@
                             shape-ids (d/nilv (keys shapes)  [])
                             any-variant? (->> shapes vals (some ctk/is-variant?) boolean)
 
-                            resolved-value (get-in resolved-tokens [(:name token) :resolved-value])
+                            ;; A shape resolves the token with the token
+                            ;; contexts above it, so the shapes are
+                            ;; updated in groups of the same value
+                            resolve-for-shape (dwtsr/make-resolver tokens-status tokens-lib resolved-tokens
+                                                                   (dsh/lookup-page state))
+                            ids-by-value (group-by #(get-in (resolve-for-shape %) [(:name token) :resolved-value])
+                                                   shape-ids)
                             tokenized-attributes (cfo/attributes-map attributes token)
                             type (:type token)]
                         (rx/concat
@@ -753,11 +760,14 @@
                                                             :always
                                                             (update :applied-tokens merge tokenized-attributes)))))
                          (when on-update-shape
-                           (let [res (on-update-shape resolved-value shape-ids attributes)]
-                             ;; Composed updates return observables and need to be executed differently
-                             (if (rx/observable? res)
-                               res
-                               (rx/of res))))
+                           (->> ids-by-value
+                                (map (fn [[resolved-value ids]]
+                                       (let [res (on-update-shape resolved-value ids attributes)]
+                                         ;; Composed updates return observables and need to be executed differently
+                                         (if (rx/observable? res)
+                                           res
+                                           (rx/of res)))))
+                                (apply rx/concat)))
                          (rx/of (dwu/commit-undo-transaction undo-id)))))))))
 
           (when text-editing?

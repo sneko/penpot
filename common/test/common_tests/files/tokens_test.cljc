@@ -1769,11 +1769,11 @@
                                                   {:themes #{(thi/id :desktop)} :mode :isolated}])]
         (t/is (= #{(thi/id :desktop)} (ctos/get-active-theme-ids status')))))
 
-    (t/testing "the outermost scope does not inherit the file's themes"
+    (t/testing "a scope inherits the file's themes for the groups it does not name"
       (let [status' (cfo/effective-tokens-status tokens-status tokens-lib
                                                  [{:themes #{(thi/id :desktop)}}])]
-        (t/is (= #{(thi/id :desktop)} (ctos/get-active-theme-ids status')))
-        (t/is (= #{(thi/id :set-desktop)} (ctos/get-active-set-ids status')))))
+        (t/is (= #{(thi/id :desktop) (thi/id :light)} (ctos/get-active-theme-ids status')))
+        (t/is (= #{(thi/id :set-desktop) (thi/id :set-light)} (ctos/get-active-set-ids status')))))
 
     (t/testing "a nested scope inherits the scopes above it"
       (let [status' (cfo/effective-tokens-status tokens-status tokens-lib
@@ -1781,18 +1781,87 @@
                                                   {:themes #{(thi/id :mobile)}}])]
         (t/is (= #{(thi/id :mobile) (thi/id :dark)} (ctos/get-active-theme-ids status')))))))
 
-(t/deftest test-file-scope
-  (let [tokens-lib (scoped-tokens-lib)]
-    (t/testing "a scope with the file's active themes"
-      (t/is (= {:themes #{(thi/id :mobile) (thi/id :light)}}
-               (cfo/file-scope (mobile-light-status) tokens-lib))))
+(defn- clashing-tokens-lib
+  "Groups Button and Modal whose themes both define `border-color`, the
+   Modal sets coming last in set order."
+  []
+  (-> (ctob/make-tokens-lib)
+      (ctob/add-set (ctob/make-token-set :id (thi/new-id! :set-button-primary) :name "button/primary"
+                                         :tokens {"border-color" (ctob/make-token :name "border-color" :type :color :value "#000001")}))
+      (ctob/add-set (ctob/make-token-set :id (thi/new-id! :set-button-error) :name "button/error"
+                                         :tokens {"border-color" (ctob/make-token :name "border-color" :type :color :value "#000002")}))
+      (ctob/add-set (ctob/make-token-set :id (thi/new-id! :set-modal-default) :name "modal/default"
+                                         :tokens {"border-color" (ctob/make-token :name "border-color" :type :color :value "#000003")}))
+      (ctob/add-theme (ctob/make-token-theme :id (thi/new-id! :button-primary) :name "Primary" :group "Button" :sets #{"button/primary"}))
+      (ctob/add-theme (ctob/make-token-theme :id (thi/new-id! :button-error) :name "Error" :group "Button" :sets #{"button/error"}))
+      (ctob/add-theme (ctob/make-token-theme :id (thi/new-id! :modal-default) :name "Default" :group "Modal" :sets #{"modal/default"}))))
 
-    (t/testing "without the hidden theme of manually activated sets"
-      (let [tokens-lib (ctob/add-theme tokens-lib (ctob/make-hidden-theme))
-            status     (ctos/make-tokens-status :active-theme-ids #{ctob/hidden-theme-id (thi/id :light)}
-                                                :active-set-ids #{(thi/id :set-light)})]
-        (t/is (= {:themes #{(thi/id :light)}}
-                 (cfo/file-scope status tokens-lib)))))))
+(defn- border-color
+  [tokens-lib set-ids]
+  (get-in (cfo/get-tokens-in-sets tokens-lib set-ids) ["border-color" :value]))
+
+(t/deftest test-scoped-set-ids
+  (let [tokens-lib (clashing-tokens-lib)
+        status     (ctos/make-tokens-status :active-theme-ids #{(thi/id :button-primary)}
+                                            :active-set-ids #{(thi/id :set-button-primary)})]
+    (t/testing "without scopes, the active sets in set order"
+      (t/is (= [(thi/id :set-button-primary)]
+               (cfo/scoped-set-ids status tokens-lib []))))
+
+    (t/testing "a scope replaces the theme of its group"
+      (t/is (= [(thi/id :set-button-error)]
+               (cfo/scoped-set-ids status tokens-lib [{:themes #{(thi/id :button-error)}}]))))
+
+    (t/testing "the nearest scope wins a token defined by two groups"
+      ;; A button inside a modal: the button's border, though the modal
+      ;; set comes last in set order
+      (t/is (= "#000002"
+               (border-color tokens-lib
+                             (cfo/scoped-set-ids status tokens-lib
+                                                 [{:themes #{(thi/id :modal-default)}}
+                                                  {:themes #{(thi/id :button-error)}}]))))
+      ;; The modal itself, or a shape of it outside the button
+      (t/is (= "#000003"
+               (border-color tokens-lib
+                             (cfo/scoped-set-ids status tokens-lib
+                                                 [{:themes #{(thi/id :modal-default)}}])))))
+
+    (t/testing "a theme inherited from the file loses against any scope"
+      ;; The file activates the modal, whose set comes last in set order
+      (let [status (ctos/make-tokens-status :active-theme-ids #{(thi/id :modal-default)}
+                                            :active-set-ids #{(thi/id :set-modal-default)})]
+        (t/is (= "#000002"
+                 (border-color tokens-lib
+                               (cfo/scoped-set-ids status tokens-lib
+                                                   [{:themes #{(thi/id :button-error)}}]))))))
+
+    (t/testing "an isolated scope keeps only its themes"
+      (t/is (= [(thi/id :set-modal-default)]
+               (cfo/scoped-set-ids status tokens-lib
+                                   [{:themes #{(thi/id :button-error)}}
+                                    {:themes #{(thi/id :modal-default)} :mode :isolated}]))))))
+
+(t/deftest test-relevant-theme-groups
+  (let [tokens-lib (-> (ctob/make-tokens-lib)
+                       (ctob/add-set (ctob/make-token-set :name "button/primary"
+                                                          :tokens {"button.bg" (ctob/make-token :name "button.bg" :type :color :value "{palette.main}")}))
+                       (ctob/add-set (ctob/make-token-set :name "palette/saphir"
+                                                          :tokens {"palette.main" (ctob/make-token :name "palette.main" :type :color :value "#000091")}))
+                       (ctob/add-set (ctob/make-token-set :name "size/medium"
+                                                          :tokens {"size.height" (ctob/make-token :name "size.height" :type :sizing :value "40")}))
+                       (ctob/add-theme (ctob/make-token-theme :name "Primary" :group "Button" :sets #{"button/primary"}))
+                       (ctob/add-theme (ctob/make-token-theme :name "Saphir" :group "Palette" :sets #{"palette/saphir"}))
+                       (ctob/add-theme (ctob/make-token-theme :name "Medium" :group "Size" :sets #{"size/medium"})))]
+    (t/testing "the groups defining an applied token or one it references"
+      (t/is (= #{"Button" "Palette"} (cfo/relevant-theme-groups tokens-lib #{"button.bg"}))))
+    (t/testing "a group only defining tokens nobody applies is left out"
+      (t/is (= #{"Size"} (cfo/relevant-theme-groups tokens-lib #{"size.height"})))
+      (t/is (= #{} (cfo/relevant-theme-groups tokens-lib #{}))))))
+
+(t/deftest test-scope-chain-key
+  (t/is (= [{:themes #{}} {:themes #{} :mode :isolated}]
+           (cfo/scope-chain-key [{:themes #{} :origin :page}
+                                 {:themes #{} :mode :isolated :origin (uuid/next)}]))))
 
 (t/deftest test-scope-chain
   (let [page-scope  {:themes #{(uuid/next)}}
@@ -1817,3 +1886,79 @@
       (t/is (= [(assoc page-scope :origin :page)]
                (cfo/scope-chain {:token-scope page-scope} objects nil)))
       (t/is (= [] (cfo/scope-chain {} objects nil))))))
+
+(t/deftest test-copy-scope-overrides
+  (let [tokens-lib (clashing-tokens-lib)
+        primary    (thi/id :button-primary)
+        error      (thi/id :button-error)
+        modal      (thi/id :modal-default)]
+    (t/testing "the groups whose theme changes"
+      (t/is (= {:themes #{error modal} :overrides #{"Button"}}
+               (cfo/copy-scope-overrides tokens-lib
+                                         {:themes #{primary modal}}
+                                         {:themes #{error modal}}))))
+
+    (t/testing "a group set back to Auto is an override too"
+      (t/is (= {:themes #{primary} :overrides #{"Modal"}}
+               (cfo/copy-scope-overrides tokens-lib
+                                         {:themes #{primary modal}}
+                                         {:themes #{primary}}))))
+
+    (t/testing "the previous overrides and the mode are kept"
+      (t/is (= {:themes #{primary modal} :mode :isolated
+                :overrides #{"Button" "Modal"} :mode-overridden true}
+               (cfo/copy-scope-overrides tokens-lib
+                                         {:themes #{primary} :overrides #{"Button"}}
+                                         {:themes #{primary modal} :mode :isolated}))))))
+
+(t/deftest test-merge-copy-scope
+  (let [tokens-lib (clashing-tokens-lib)
+        primary    (thi/id :button-primary)
+        error      (thi/id :button-error)
+        modal      (thi/id :modal-default)]
+    (t/testing "the copy keeps its groups and follows the main for the others"
+      ;; The copy chose Error, the main then gets the modal theme
+      (t/is (= {:themes #{error modal} :overrides #{"Button"}}
+               (cfo/merge-copy-scope tokens-lib
+                                     {:themes #{primary modal}}
+                                     {:themes #{error} :overrides #{"Button"}}))))
+
+    (t/testing "a group the copy set to Auto stays without theme"
+      (t/is (= {:themes #{primary} :overrides #{"Modal"}}
+               (cfo/merge-copy-scope tokens-lib
+                                     {:themes #{primary modal}}
+                                     {:themes #{primary} :overrides #{"Modal"}}))))
+
+    (t/testing "without overrides the copy follows the main"
+      (t/is (= {:themes #{primary} :overrides #{} :mode :isolated}
+               (cfo/merge-copy-scope tokens-lib
+                                     {:themes #{primary} :mode :isolated}
+                                     {:themes #{error} :overrides #{}}))))
+
+    (t/testing "the mode follows the main unless overridden"
+      (t/is (= {:themes #{error} :overrides #{"Button"} :mode-overridden true}
+               (cfo/merge-copy-scope tokens-lib
+                                     {:themes #{primary} :mode :isolated}
+                                     {:themes #{error} :overrides #{"Button"} :mode-overridden true}))))))
+
+(t/deftest test-theme-origin-by-group
+  (let [tokens-lib (clashing-tokens-lib)
+        status     (ctos/make-tokens-status :active-theme-ids #{(thi/id :button-primary)}
+                                            :active-set-ids #{(thi/id :set-button-primary)})
+        board-id   (thi/new-id! :board)]
+    (t/testing "without scopes, the file's themes"
+      (t/is (= {"Button" {:theme-id (thi/id :button-primary) :origin :file}}
+               (cfo/theme-origin-by-group status tokens-lib []))))
+
+    (t/testing "the nearest scope that names a group"
+      (t/is (= {"Button" {:theme-id (thi/id :button-error) :origin board-id}
+                "Modal"  {:theme-id (thi/id :modal-default) :origin :page}}
+               (cfo/theme-origin-by-group status tokens-lib
+                                          [{:themes #{(thi/id :modal-default)} :origin :page}
+                                           {:themes #{(thi/id :button-error)} :origin board-id}]))))
+
+    (t/testing "an isolated scope drops what comes from above"
+      (t/is (= {"Button" {:theme-id (thi/id :button-error) :origin board-id}}
+               (cfo/theme-origin-by-group status tokens-lib
+                                          [{:themes #{(thi/id :modal-default)} :origin :page}
+                                           {:themes #{(thi/id :button-error)} :mode :isolated :origin board-id}]))))))

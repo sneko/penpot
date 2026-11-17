@@ -170,3 +170,29 @@
     color: var(--layer-row-foreground-color-placeholder);
   }
 }
+
+.context-banner {
+  display: flex;
+  flex-direction: column;
+  gap: deprecated.$s-4;
+  margin: deprecated.$s-4 deprecated.$s-8;
+  padding: deprecated.$s-8;
+  border-radius: deprecated.$br-8;
+  background-color: var(--color-background-tertiary);
+}
+
+.context-banner-text {
+  @include use-typography("body-small");
+  margin: 0;
+  color: var(--color-foreground-secondary);
+}
+
+.context-banner-button {
+  @include use-typography("body-small");
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent-primary);
+  cursor: pointer;
+}

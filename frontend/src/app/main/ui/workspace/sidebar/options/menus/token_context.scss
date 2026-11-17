@@ -1,0 +1,66 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) KALEIDOS SUBSIDIARY SL
+
+@use "ds/typography.scss" as t;
+@use "ds/_sizes.scss" as *;
+@use "../../../sidebar/common/sidebar.scss" as sidebar;
+
+.element-set {
+  max-width: var(--options-width);
+}
+
+.element-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  margin-block-end: var(--sp-s);
+}
+
+.row {
+  @include sidebar.option-grid-structure;
+}
+
+.row-label {
+  @include t.use-typography("body-small");
+  grid-column: span 3;
+  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-foreground-secondary);
+}
+
+.row-select {
+  grid-column: span 5;
+  align-self: center;
+}
+
+.row-label-wide {
+  grid-column: span 6;
+}
+
+.row-switch {
+  grid-column: span 2;
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  block-size: $sz-32;
+}
+
+.hint {
+  @include t.use-typography("body-small");
+  color: var(--color-foreground-secondary);
+}
+
+.show-all {
+  @include t.use-typography("body-small");
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent-primary);
+  cursor: pointer;
+}

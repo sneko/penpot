@@ -11,6 +11,7 @@
    [app.common.data.macros :as dm]
    [app.common.files.changes-builder :as pcb]
    [app.common.files.helpers :as cfh]
+   [app.common.files.tokens :as cfo]
    [app.common.files.variant :as cfv]
    [app.common.geom.matrix :as gmt]
    [app.common.geom.point :as gpt]
@@ -887,7 +888,8 @@
                           root-inst
                           root-main
                           container
-                          omit-touched?)
+                          omit-touched?
+                          (dm/get-in file [:data :tokens-lib]))
 
             (ctsl/flex-layout? shape-main)
             (update-flex-child-copy-attrs shape-main
@@ -1080,7 +1082,8 @@
                                       root-main
                                       root-inst
                                       component-container
-                                      omit-touched?)
+                                      omit-touched?
+                                      nil)
                         (change-touched shape-inst
                                         shape-main
                                         container
@@ -1807,8 +1810,10 @@
   attributes that have changed in the origin shape to the dest shape.
 
   If omit-touched? is true, attributes whose group has been touched
-  in the destination shape will not be copied."
-  [changes dest-shape origin-shape dest-root origin-root container omit-touched?]
+  in the destination shape will not be copied. The token scope of a
+  copy is the exception: with `tokens-lib`, a copy that lists its
+  `:overrides` keeps them and follows the origin for the rest."
+  [changes dest-shape origin-shape dest-root origin-root container omit-touched? tokens-lib]
 
   (shape-log :info (:id dest-shape) container
              :msg (str "SYNC "
@@ -1874,6 +1879,17 @@
                      (= :content attr)
                      (touched sync-group))
 
+                ;; A copy that lists the overrides of its token scope
+                ;; keeps them and follows the origin for the other
+                ;; groups, even when touched. Without the list (synced
+                ;; from Figma, older files) the whole scope is kept.
+                token-scope-merge?
+                (and omit-touched?
+                     (= :token-scope attr)
+                     (some? tokens-lib)
+                     (touched sync-group)
+                     (contains? (:token-scope dest-shape) :overrides))
+
                 skip-operations?
                 (or (= (get origin-shape attr) (get dest-shape attr))
                     (and (touched sync-group)
@@ -1881,7 +1897,8 @@
                          ;; When it is a text-partial-change, we should generate operations
                          ;; even when omit-touched? is true, but updating only the text or
                          ;; the attributes, omiting the other part
-                         (not text-content-change?)))
+                         (not text-content-change?)
+                         (not token-scope-merge?)))
 
                 attr-val
                 (when-not skip-operations?
@@ -1895,6 +1912,17 @@
                     (text-change-value (:content dest-shape)
                                        (:content origin-shape)
                                        touched)
+
+                    token-scope-merge?
+                    (cfo/merge-copy-scope tokens-lib
+                                          (:token-scope origin-shape)
+                                          (:token-scope dest-shape))
+
+                    ;; The overrides of a copy stay on it: neither its
+                    ;; main (on an inverse sync) nor the copies of a
+                    ;; main that is itself a copy inherit them
+                    (= :token-scope attr)
+                    (some-> (get origin-shape attr) (dissoc :overrides :mode-overridden))
 
                     :else
                     (get origin-shape attr)))
