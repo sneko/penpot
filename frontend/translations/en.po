@@ -9708,11 +9708,11 @@ msgstr "Token context"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
 msgid "workspace.options.token-context.auto"
-msgstr "Auto · not set"
+msgstr "Not set"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
 msgid "workspace.options.token-context.auto-inherited"
-msgstr "Auto · %s (%s)"
+msgstr "Inherited · %s (%s)"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
 msgid "workspace.options.token-context.origin-file"
@@ -9736,7 +9736,7 @@ msgstr "No theme group changes the tokens used here"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
 msgid "workspace.options.token-context.add-group"
-msgstr "Add a group… (%s more)"
+msgstr "Add a theme group (%s available)"
 
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
@@ -9748,8 +9748,20 @@ msgid "workspace.options.token-context.empty-group-hint"
 msgstr "%s: its sets define no token, so choosing a theme changes nothing"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.ineffective"
+msgstr "no effect here"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.ineffective-hint"
+msgstr "%s: none of its themes changes the tokens used here, with the contexts set above and below"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
 msgid "workspace.options.token-context.inherit"
 msgstr "Inherit the contexts above"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.options"
+msgstr "Token context options"
 
 #: src/app/main/ui/workspace/context_menu.cljs
 msgid "workspace.shape.menu.token-context.new"

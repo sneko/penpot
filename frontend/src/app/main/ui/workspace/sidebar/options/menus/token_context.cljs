@@ -18,10 +18,10 @@
    [app.main.data.workspace.tokens.scopes :as dwts]
    [app.main.refs :as refs]
    [app.main.store :as st]
+   [app.main.ui.components.dropdown :refer [dropdown]]
    [app.main.ui.components.title-bar :refer [title-bar*]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.ds.controls.select :refer [select*]]
-   [app.main.ui.ds.controls.switch :refer [switch*]]
    [app.main.ui.ds.foundations.assets.icon :as i]
    [app.util.i18n :refer [tr]]
    [rumext.v2 :as mf]))
@@ -29,7 +29,12 @@
 ;; Option ids of the selects. Theme ids are uuids, so they cannot collide.
 (def ^:private auto-option-id "auto")
 (def ^:private mixed-option-id "mixed")
-(def ^:private add-option-id "add")
+
+;; The groups added by hand to choose a theme of, as Figma's "Apply
+;; variable mode" adds a collection, for the selection of `:key`: they
+;; stay listed until the selection changes. Shared by the two places the
+;; section can render in (see `token-context-menu*`).
+(defonce ^:private added-groups* (atom {:key nil :groups []}))
 
 (defn- origin-label
   [origin objects]
@@ -55,7 +60,7 @@
 
 (mf/defc group-row*
   {::mf/private true}
-  [{:keys [tokens-lib group scopes inherited objects on-select]}]
+  [{:keys [tokens-lib group scopes inherited objects on-select is-ineffective]}]
   (let [themes   (into [] (comp (keep #(ctob/get-theme tokens-lib %))
                                 (remove ctob/hidden-theme?))
                        (ctob/get-themes-in-group tokens-lib group))
@@ -86,14 +91,21 @@
              (on-select group (when-not (= option-id auto-option-id)
                                 (uuid/parse option-id))))))]
     [:div {:class (stl/css :row)}
-     [:span {:class (stl/css :row-label)
-             :title (if no-tokens?
-                      (tr "workspace.options.token-context.empty-group-hint" group)
-                      group)}
+     [:span {:class (stl/css-case :row-label true
+                                  :row-label-ineffective (and is-ineffective (not no-tokens?)))
+             :title (cond
+                      no-tokens?     (tr "workspace.options.token-context.empty-group-hint" group)
+                      is-ineffective (tr "workspace.options.token-context.ineffective-hint" group)
+                      :else          group)}
       group
-      (when no-tokens?
+      (cond
+        no-tokens?
         [:span {:class (stl/css :row-label-empty)}
-         (tr "workspace.options.token-context.empty-group")])]
+         (tr "workspace.options.token-context.empty-group")]
+
+        is-ineffective
+        [:span {:class (stl/css :row-label-empty)}
+         (tr "workspace.options.token-context.ineffective")])]
      [:div {:class (stl/css :row-select)}
       [:> select* {:key (str group "-" selected)
                    :default-selected selected
@@ -104,21 +116,38 @@
 (mf/defc token-context-menu*
   "`scopes` are the scopes of the selected holders (nil for those without
   one), `chain-above` the scopes above the first one (see
-  `cfo/scope-chain`), `token-names` the tokens used in the selection.
+  `cfo/scope-chain`), `main-scopes` those of the mains of the selected
+  component copies, `token-names` the tokens used in the selection.
   The groups listed are those that change one of these tokens or that a
   scope of the selection or above chooses; the others can be added from
   a select.
-  `on-update` gets a fn of a scope, `on-remove` removes the contexts."
-  [{:keys [scopes chain-above token-names on-update on-remove]}]
+  `on-update` gets a fn of a scope, `on-remove` removes the contexts.
+  The section renders where `placement` says it should: `:top` when the
+  selection uses token contexts, `:bottom` otherwise, out of the way, as
+  the sidebar renders it in both places. `selection-key` identifies the
+  selection."
+  [{:keys [scopes chain-above main-scopes token-names direct-groups on-update on-remove
+           placement selection-key roots]}]
   (let [tokens-lib    (mf/deref refs/tokens-lib)
         tokens-status (mf/deref refs/tokens-status)
         objects       (mf/deref refs/workspace-page-objects)
-        ;; The groups added by hand to choose a theme of, as Figma's
-        ;; "Apply variable mode" adds a collection: they stay listed
-        ;; until the selection changes (the parent keys this component
-        ;; by selection)
-        added*        (mf/use-state [])
-        added         (deref added*)
+        added-state   (mf/deref added-groups*)
+        added         (if (= (:key added-state) selection-key) (:groups added-state) [])
+        add-group!    (fn [group]
+                        (swap! added-groups*
+                               (fn [{:keys [key groups]}]
+                                 (let [groups (if (= key selection-key) groups [])]
+                                   {:key selection-key
+                                    :groups (cond-> groups
+                                              (not (some #{group} groups)) (conj group))}))))
+        ;; The added groups are forgotten when the selection changes,
+        ;; also when the same shapes are selected again
+        _             (mf/with-effect [selection-key]
+                        (when (not= (:key @added-groups*) selection-key)
+                          (reset! added-groups* {:key selection-key :groups []})))
+        ;; :add or :options, the dropdown open from the title bar
+        menu*         (mf/use-state nil)
+        menu          (deref menu*)
 
         groups
         (mf/with-memo [tokens-lib]
@@ -126,28 +155,27 @@
             (into [] (remove #(empty? (ctob/get-themes-in-group tokens-lib %)))
                   (ctob/get-theme-groups tokens-lib))))
 
-        ;; The groups that change a token used in the selection, and
-        ;; those the selection or a container above already chooses
-        ;; (a Figma file sets the modes of collections whose
-        ;; variables may be missing)
-        ;; Listed: the groups a scope of the selection or above
-        ;; chooses, and those defining a token the selection uses
-        ;; itself, as Figma lists the collections whose modes a layer
-        ;; sets. A group with a single theme has nothing to switch
+        ;; Listed, as Figma lists on a layer the collections whose
+        ;; modes it sets: the groups a context of the selection or of
+        ;; the main of a copy chooses (a component describes there what
+        ;; its copies can switch). The others are in the add menu, those
+        ;; changing a token used below first
         switchable? #(> (count (ctob/get-themes-in-group tokens-lib %)) 1)
 
         relevant
-        (mf/with-memo [tokens-lib token-names scopes chain-above]
+        (mf/with-memo [tokens-lib scopes main-scopes]
           (when tokens-lib
-            (into (into #{}
-                        (filter switchable?)
-                        (cfo/direct-theme-groups tokens-lib token-names))
+            (into #{}
                   (keep #(:group (ctob/get-theme tokens-lib %)))
-                  (mapcat :themes (concat scopes chain-above)))))
+                  (mapcat :themes (concat scopes main-scopes)))))
 
-        ;; The groups reached only through references come first in the
-        ;; select: they change these tokens too, further down an alias
-        ;; chain
+        ;; In the add menu: first the groups defining a token used below
+        ;; and not set by a context below, then those reached through
+        ;; references
+        direct
+        (mf/with-memo [direct-groups]
+          (into #{} (filter switchable?) direct-groups))
+
         indirect
         (mf/with-memo [tokens-lib token-names]
           (when tokens-lib
@@ -162,12 +190,16 @@
 
         has-context? (some some? scopes)
         isolated?    (and has-context? (every? #(= :isolated (:mode %)) scopes))
-        main-groups  (filterv #(contains? relevant %) groups)
         other-groups (filterv #(not (contains? relevant %)) groups)
         other-groups (->> other-groups
                           (filterv #(not (contains? (set added) %)))
-                          (sort-by #(if (contains? indirect %) 0 1)))
-        shown        (into main-groups (remove (set main-groups)) added)
+                          (sort-by #(cond (contains? direct %) 0
+                                          (contains? indirect %) 1
+                                          :else 2)))
+        ;; In the order of the library, added groups included: a group
+        ;; added by hand takes the place it keeps once reselected
+        shown        (let [added (set added)]
+                       (filterv #(or (contains? relevant %) (contains? added %)) groups))
 
         on-select
         (mf/use-fn
@@ -177,33 +209,114 @@
 
         on-toggle-inherit
         (mf/use-fn
-         (mf/deps on-update)
-         (fn [inherit?]
-           (on-update #(if inherit? (dissoc % :mode) (assoc % :mode :isolated)))))
+         (mf/deps on-update isolated?)
+         (fn []
+           (reset! menu* nil)
+           (on-update #(if isolated? (dissoc % :mode) (assoc % :mode :isolated)))))
 
-        on-add
+        on-remove'
         (mf/use-fn
-         (fn [group]
-           (when-not (= group add-option-id)
-             (swap! added* conj group))))]
+         (mf/deps on-remove)
+         (fn []
+           (reset! menu* nil)
+           (on-remove)))
 
-    (when (seq groups)
+        on-close-menu (mf/use-fn #(reset! menu* nil))
+
+        on-open-add
+        (mf/use-fn #(swap! menu* (fn [m] (when-not (= m :add) :add))))
+
+        on-open-options
+        (mf/use-fn #(swap! menu* (fn [m] (when-not (= m :options) :options))))
+
+        used?         (or has-context? (seq shown))
+
+        displayed?    (and (seq groups) (= placement (if used? :top :bottom)))
+
+        ;; The listed groups whose choice changes nothing below: greyed.
+        ;; Resolving each theme of each group costs up to a few hundred
+        ;; milliseconds, so it runs after the section is shown (only
+        ;; where it is shown) instead of delaying the selection
+        ineffective*  (mf/use-state #{})
+        ineffective   (deref ineffective*)
+
+        ;; One group per timer, so no long freeze; a result already
+        ;; computed for the same tokens and subtree comes from the cache
+        ;; By value: `roots` and `shown` are rebuilt on each render
+        roots-key     (mapv (juxt :id :scope :chain-above) roots)
+
+        _             (mf/with-effect [tokens-status tokens-lib objects roots-key shown displayed?]
+                        (when (and displayed? tokens-status tokens-lib (seq roots) (seq shown))
+                          (let [timer     (volatile! nil)
+                                cancelled (volatile! false)
+                                step      (fn step [groups found]
+                                            (when-not @cancelled
+                                              (if-let [group (first groups)]
+                                                (let [found (cond-> found
+                                                              (dwts/ineffective-theme-group? tokens-status tokens-lib
+                                                                                             objects roots group)
+                                                              (conj group))]
+                                                  (vreset! timer (js/setTimeout #(step (rest groups) found) 0)))
+                                                ;; Only a different result renders again
+                                                (when (not= found @ineffective*)
+                                                  (reset! ineffective* found)))))]
+                            (vreset! timer (js/setTimeout #(step shown #{}) 50))
+                            #(do (vreset! cancelled true)
+                                 (js/clearTimeout @timer)))))]
+
+    (when displayed?
       [:section {:class (stl/css :element-set)
                  :aria-label (tr "workspace.options.token-context.title")}
        [:div {:class (stl/css :element-title)}
         [:> title-bar* {:collapsable false
                         :title (tr "workspace.options.token-context.title")}
-         (when has-context?
+         [:div {:class (stl/css :title-actions)}
+          (when (seq other-groups)
            [:> icon-button* {:variant "ghost"
-                             :aria-label (tr "workspace.options.token-context.remove")
-                             :on-click on-remove
-                             :icon i/remove}])]]
+                             :aria-label (tr "workspace.options.token-context.add-group"
+                                             (count other-groups))
+                             :on-click on-open-add
+                             :icon i/add}])
+          (when has-context?
+            [:> icon-button* {:variant "ghost"
+                              :aria-label (tr "workspace.options.token-context.options")
+                              :on-click on-open-options
+                              :icon i/menu}])]]]
+
+       ;; The other groups in a menu, not a list: a design system can
+       ;; have dozens of them
+       (when (= menu :add)
+         [:& dropdown {:show true :on-close on-close-menu}
+          [:ul {:class (stl/css :menu) :role "menu"}
+           (for [group other-groups]
+             [:li {:key group
+                   :class (stl/css :menu-item)
+                   :role "menuitem"
+                   :on-click (fn []
+                               (reset! menu* nil)
+                               (add-group! group))}
+              [:span {:class (stl/css :menu-item-label)} group]])]])
+
+       (when (= menu :options)
+         [:& dropdown {:show true :on-close on-close-menu}
+          [:ul {:class (stl/css :menu) :role "menu"}
+           [:li {:class (stl/css :menu-item)
+                 :role "menuitemcheckbox"
+                 :aria-checked (not isolated?)
+                 :on-click on-toggle-inherit}
+            [:span {:class (stl/css :menu-item-label)}
+             (tr "workspace.options.token-context.inherit")]
+            [:> i/icon* {:icon-id i/tick
+                         :size "s"
+                         :class (stl/css-case :menu-check true
+                                              :menu-check-visible (not isolated?))}]]
+           [:li {:class (stl/css :menu-item)
+                 :role "menuitem"
+                 :on-click on-remove'}
+            [:span {:class (stl/css :menu-item-label)}
+             (tr "workspace.options.token-context.remove")]]]])
 
        [:div {:class (stl/css :element-content)}
-        (when (empty? main-groups)
-          [:p {:class (stl/css :hint)}
-           (tr "workspace.options.token-context.no-relevant-groups")])
-
         (for [group shown]
           [:> group-row* {:key group
                           :tokens-lib tokens-lib
@@ -211,38 +324,14 @@
                           :scopes scopes
                           :inherited (when-not isolated? (get inherited group))
                           :objects objects
-                          :on-select on-select}])
-
-        ;; The other groups through a select, not a list: a design
-        ;; system can have dozens of them
-        (when (seq other-groups)
-          [:div {:class (stl/css :row)}
-           [:div {:class (stl/css :row-add)}
-            [:> select* {:key (str "add-" (count added))
-                         :default-selected add-option-id
-                         :options (into [{:id add-option-id
-                                          :label (tr "workspace.options.token-context.add-group"
-                                                     (count other-groups))}]
-                                        (map (fn [group] {:id group :label group}))
-                                        other-groups)
-                         :aria-label (tr "workspace.options.token-context.add-group"
-                                         (count other-groups))
-                         :on-change on-add}]]])
-
-        (when has-context?
-          [:div {:class (stl/css :row)}
-           [:span {:class (stl/css :row-label :row-label-wide)}
-            (tr "workspace.options.token-context.inherit")]
-           [:div {:class (stl/css :row-switch)}
-            [:> switch* {:key (str "inherit-" isolated?)
-                         :default-checked (not isolated?)
-                         :aria-label (tr "workspace.options.token-context.inherit")
-                         :on-change on-toggle-inherit}]]])]])))
+                          :is-ineffective (contains? ineffective group)
+                          :on-select on-select}])]])))
 
 (mf/defc shapes-token-context-menu*
   "The token context section of the selected boards, groups, booleans
-  and component copies; nothing when another kind of shape is selected."
-  [{:keys [shapes]}]
+  and component copies; nothing when another kind of shape is selected.
+  `placement` as in `token-context-menu*`."
+  [{:keys [shapes placement]}]
   (let [page    (mf/deref refs/workspace-page)
         objects (mf/deref refs/workspace-page-objects)
         holders (filterv dwts/scope-holder? shapes)
@@ -257,6 +346,31 @@
         (mf/with-memo [objects ids]
           (dwts/applied-token-names objects ids))
 
+        ;; Not the groups a context below already sets for every use:
+        ;; choosing them here would change nothing
+        tokens-lib
+        (mf/deref refs/tokens-lib)
+
+        direct-groups
+        (mf/with-memo [objects ids tokens-lib]
+          (when tokens-lib
+            (dwts/unmasked-theme-groups objects ids tokens-lib)))
+
+        roots
+        (mf/with-memo [page objects holders]
+          (mapv (fn [{:keys [id parent-id token-scope]}]
+                  {:id id
+                   :scope token-scope
+                   :chain-above (cfo/scope-chain page objects parent-id)})
+                holders))
+
+        ;; The groups the component of a copy is designed with stay
+        ;; listed, even back to Auto
+        main-scopes
+        (mf/with-memo [objects holders]
+          (let [state @st/state]
+            (into [] (keep #(dwts/main-token-scope state %)) holders)))
+
         on-update
         (mf/use-fn
          (mf/deps ids)
@@ -269,29 +383,50 @@
 
     (when (and (seq holders) (= (count holders) (count shapes)))
       [:> token-context-menu* {:key (str ids)
+                               :roots roots
+                               :placement placement
+                               :selection-key (str ids)
                                :scopes (mapv :token-scope holders)
                                :chain-above (if (= 1 (count holders)) chain-above [])
+                               :main-scopes main-scopes
+                               :direct-groups direct-groups
                                :token-names token-names
                                :on-update on-update
                                :on-remove on-remove}])))
 
 (mf/defc page-token-context-menu*
-  "The token context section of the current page."
-  []
+  "The token context section of the current page. `placement` as in
+  `token-context-menu*`."
+  [{:keys [placement]}]
   (let [page    (mf/deref refs/workspace-page)
         objects (mf/deref refs/workspace-page-objects)
+
+        tokens-lib (mf/deref refs/tokens-lib)
+
+        roots
+        (mf/with-memo [page]
+          [{:id uuid/zero :scope (:token-scope page) :chain-above []}])
 
         token-names
         (mf/with-memo [objects]
           (dwts/applied-token-names objects [uuid/zero]))
+
+        direct-groups
+        (mf/with-memo [objects tokens-lib]
+          (when tokens-lib
+            (dwts/unmasked-theme-groups objects [uuid/zero] tokens-lib)))
 
         on-update
         (mf/use-fn #(st/emit! (dwts/update-page-token-scope nil %)))
 
         on-remove
         (mf/use-fn #(st/emit! (dwts/set-page-token-scope nil)))]
-    [:> token-context-menu* {:scopes [(:token-scope page)]
+    [:> token-context-menu* {:placement placement
+                             :roots roots
+                             :selection-key (str "page-" (:id page))
+                             :scopes [(:token-scope page)]
                              :chain-above []
                              :token-names token-names
+                             :direct-groups direct-groups
                              :on-update on-update
                              :on-remove on-remove}]))

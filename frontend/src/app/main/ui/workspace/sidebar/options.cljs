@@ -215,21 +215,26 @@
        (zero? total-selected)
        [:*
         (when (contains? cf/flags :token-scoped-themes)
-          [:> page-token-context-menu* {}])
-        [:> page/options*]]
+          [:> page-token-context-menu* {:placement :top}])
+        [:> page/options*]
+        ;; Out of the way when the page has no context
+        (when (contains? cf/flags :token-scoped-themes)
+          [:> page-token-context-menu* {:placement :bottom}])]
 
        :else
        [:*
-        ;; Near the top, as the variable modes in Figma's sidebar
-        (when (contains? cf/flags :token-scoped-themes)
-          [:> shapes-token-context-menu* {:shapes shapes}])
+        ;; The token context section renders below the measures (see the
+        ;; options of each type of shape), or here at the bottom
         [:> shape-options*
          {:shapes shapes
           :shapes-with-children shapes-with-children
           :page-id page-id
           :file-id file-id
           :selected selected
-          :libraries libraries}]])]))
+          :libraries libraries}]
+        ;; Out of the way when the selection uses no context
+        (when (contains? cf/flags :token-scoped-themes)
+          [:> shapes-token-context-menu* {:shapes shapes :placement :bottom}])])]))
 
 (mf/defc inspect-tab*
   {::mf/private true}

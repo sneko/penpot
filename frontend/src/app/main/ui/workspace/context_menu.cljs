@@ -901,7 +901,7 @@
             ;; and those defining a token the selection uses itself
             relevant (into (into #{}
                                  (filter #(> (count (ctob/get-themes-in-group tokens-lib %)) 1))
-                                 (cfo/direct-theme-groups tokens-lib (dwts/applied-token-names objects holder-ids)))
+                                 (dwts/unmasked-theme-groups objects holder-ids tokens-lib))
                            chosen)]
         ;; A theme is checked when every selected shape has it
         [:> token-context-entries*

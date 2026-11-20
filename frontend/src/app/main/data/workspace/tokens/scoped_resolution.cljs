@@ -19,12 +19,28 @@
   (and (contains? cf/flags :token-scoped-themes)
        (contains? cf/flags :tokenscript)))
 
+;; The tokens resolved by ordered set ids, for one tokens library: resolving
+;; all the sets is costly (every token of the file), and the chains of the
+;; shapes of all the pages lead to a few distinct sets
+(defonce ^:private resolved-cache (atom {:tokens-lib nil :by-set-ids {}}))
+
 (defn resolve-chain
   "The tokens resolved for a chain of scopes (see `cfo/scoped-set-ids`)."
   [tokens-status tokens-lib chain]
-  (->> (cfo/scoped-set-ids tokens-status tokens-lib chain)
-       (cfo/get-token-sets-in-order tokens-lib)
-       (ts/resolve-sets)))
+  (let [set-ids (cfo/scoped-set-ids tokens-status tokens-lib chain)
+        cache   @resolved-cache]
+    (if-let [resolved (and (identical? tokens-lib (:tokens-lib cache))
+                           (get-in cache [:by-set-ids set-ids]))]
+      resolved
+      (let [resolved (->> set-ids
+                          (cfo/get-token-sets-in-order tokens-lib)
+                          (ts/resolve-sets))]
+        (swap! resolved-cache
+               (fn [cache]
+                 (if (identical? tokens-lib (:tokens-lib cache))
+                   (assoc-in cache [:by-set-ids set-ids] resolved)
+                   {:tokens-lib tokens-lib :by-set-ids {set-ids resolved}})))
+        resolved))))
 
 (defn make-resolver
   "A fn from a shape id of `page` (nil for the page itself) to the tokens

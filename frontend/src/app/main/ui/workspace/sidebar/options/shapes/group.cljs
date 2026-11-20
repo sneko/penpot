@@ -10,6 +10,7 @@
    [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.types.shape.layout :as ctl]
+   [app.config :as cf]
    [app.main.refs :as refs]
    [app.main.ui.workspace.sidebar.options.menus.blur :refer [blur-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.color-selection :refer [color-selection-menu*]]
@@ -25,6 +26,7 @@
    [app.main.ui.workspace.sidebar.options.menus.stroke :refer [stroke-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.svg-attrs :refer [svg-attrs-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.text :as ot]
+   [app.main.ui.workspace.sidebar.options.menus.token-context :refer [shapes-token-context-menu*]]
    [app.main.ui.workspace.sidebar.options.shapes.multiple :refer [get-attrs]]
    [rumext.v2 :as mf]))
 
@@ -139,6 +141,11 @@
                          :applied-tokens applied-tokens
                          :values measure-values
                          :shapes shapes}]
+
+     ;; Below the measures, which have no title, as the variable modes in
+     ;; Figma's sidebar; at the bottom when the selection uses no context
+     (when (contains? cf/flags :token-scoped-themes)
+       [:> shapes-token-context-menu* {:shapes shapes :placement :top}])
 
      [:> layout-container-menu*
       {:type type

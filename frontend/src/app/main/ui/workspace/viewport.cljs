@@ -53,7 +53,6 @@
    [app.main.ui.workspace.viewport.selection :as selection]
    [app.main.ui.workspace.viewport.snap-distances :as snap-distances]
    [app.main.ui.workspace.viewport.snap-points :as snap-points]
-   [app.main.ui.workspace.viewport.token-scopes :as token-scopes]
    [app.main.ui.workspace.viewport.top-bar :refer [edition-bars*
                                                    view-only-bar*]]
    [app.main.ui.workspace.viewport.utils :as utils]
@@ -590,11 +589,6 @@
            :zoom zoom
            :is-alt @alt?
            :is-shift @shift?}])
-
-       (when (token-scopes/visible?)
-         [:> token-scopes/token-scope-areas* {:objects objects-modified
-                                              :selected selected
-                                              :zoom zoom}])
 
        [:> widgets/frame-titles*
         {:objects base-objects
