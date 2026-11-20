@@ -55,12 +55,12 @@
   color: var(--color-foreground-secondary);
 }
 
-.show-all {
-  @include t.use-typography("body-small");
-  align-self: flex-start;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--color-accent-primary);
-  cursor: pointer;
+.row-add {
+  grid-column: span 8;
+}
+
+.row-label-empty {
+  display: block;
+  color: var(--color-foreground-secondary);
+  opacity: 0.7;
 }

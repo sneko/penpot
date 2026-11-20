@@ -745,42 +745,87 @@
     (sequential? value) (into #{} (mapcat value-references) value)
     :else               #{}))
 
-(defn- token-names-with-references
-  "`token-names` and the names of every token they reference, directly
-   or through other references, in any set of the library."
-  [tokens-lib token-names]
-  (let [sets (ctob/get-sets tokens-lib)]
-    (loop [pending (seq token-names)
-           seen    #{}]
-      (if-let [token-name (first pending)]
-        (if (contains? seen token-name)
-          (recur (rest pending) seen)
-          (let [references (into #{}
-                                 (mapcat #(some-> (get (ctob/get-tokens- %) token-name)
-                                                  (:value)
-                                                  (value-references)))
-                                 sets)]
-            (recur (concat (rest pending) references)
-                   (conj seen token-name))))
-        seen))))
+(defn- build-relevance-index
+  "For each token name of `tokens-lib`, the names its values reference
+   (in any set) and the groups of the visible themes whose sets define
+   it."
+  [tokens-lib]
+  (let [groups-by-set (reduce (fn [acc theme]
+                                (reduce #(update %1 %2 (fnil conj #{}) (:group theme))
+                                        acc
+                                        (:sets theme)))
+                              {}
+                              (remove ctob/hidden-theme? (ctob/get-themes tokens-lib)))]
+    (reduce (fn [acc set]
+              (let [groups (get groups-by-set (ctob/get-name set))]
+                (reduce-kv (fn [acc token-name token]
+                             (cond-> (update-in acc [:references token-name] (fnil into #{})
+                                                (value-references (:value token)))
+                               (seq groups)
+                               (update-in [:groups token-name] (fnil into #{}) groups)))
+                           acc
+                           (ctob/get-tokens- set))))
+            {:references {} :groups {} :by-name (volatile! {})}
+            (ctob/get-sets tokens-lib))))
+
+;; The index of the last library asked for: the menus and the design tab
+;; ask for every selection, a library has thousands of tokens
+(defonce ^:private relevance-index-cache (volatile! nil))
+
+(defn- relevance-index
+  [tokens-lib]
+  (let [[cached-lib index] @relevance-index-cache]
+    (if (identical? cached-lib tokens-lib)
+      index
+      (let [index (build-relevance-index tokens-lib)]
+        (vreset! relevance-index-cache [tokens-lib index])
+        index))))
+
+(defn- name-groups
+  "The groups that change `token-name`, through its references too,
+   memoized in the index's `:by-name` volatile: an alias chain is walked
+   once per library."
+  [{:keys [references groups by-name]} token-name]
+  (or (get @by-name token-name)
+      (let [result (loop [pending [token-name]
+                          seen    (transient #{})
+                          result  (transient #{})]
+                     (if-let [name (peek pending)]
+                       (let [pending (pop pending)]
+                         (cond
+                           (contains? seen name)
+                           (recur pending seen result)
+
+                           ;; Already known: no need to walk it again
+                           (and (not= name token-name) (contains? @by-name name))
+                           (recur pending (conj! seen name) (reduce conj! result (get @by-name name)))
+
+                           :else
+                           (recur (into pending (get references name))
+                                  (conj! seen name)
+                                  (reduce conj! result (get groups name)))))
+                       (persistent! result)))]
+        (vswap! by-name assoc token-name result)
+        result)))
 
 (defn relevant-theme-groups
   "The names of the theme groups that change a token of `token-names`,
    the tokens applied to some shapes: groups with a theme whose sets
-   define one of them or a token they reference. The groups to propose
-   in a token context, as Figma proposes the variable collections a
-   frame uses."
+   define one of them or a token they reference, directly or through
+   other references. The groups to propose in a token context, as Figma
+   proposes the variable collections a frame uses."
   [tokens-lib token-names]
-  (let [names (token-names-with-references tokens-lib token-names)]
-    (into #{}
-          (comp (remove ctob/hidden-theme?)
-                (filter (fn [theme]
-                          (some (fn [set-name]
-                                  (when-let [set (ctob/get-set-by-name tokens-lib set-name)]
-                                    (some #(contains? (ctob/get-tokens- set) %) names)))
-                                (:sets theme))))
-                (map :group))
-          (ctob/get-themes tokens-lib))))
+  (let [index (relevance-index tokens-lib)]
+    (into #{} (mapcat #(name-groups index %)) token-names)))
+
+(defn direct-theme-groups
+  "The names of the theme groups whose themes' sets define a token of
+   `token-names` itself, not only a token it references: the groups a
+   designer switches for these tokens, as Figma lists on a layer the
+   collections of the variables it binds."
+  [tokens-lib token-names]
+  (let [{:keys [groups]} (relevance-index tokens-lib)]
+    (into #{} (mapcat #(get groups %)) token-names)))
 
 (defn- theme-ids-by-group
   [tokens-lib scope]

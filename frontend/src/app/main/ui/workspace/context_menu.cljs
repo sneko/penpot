@@ -897,7 +897,11 @@
                                  (mapcat :themes)
                                  (keep #(:group (ctob/get-theme tokens-lib %))))
                            holder-ids)
-            relevant (into (cfo/relevant-theme-groups tokens-lib (dwts/applied-token-names objects holder-ids))
+            ;; A group with a single theme has nothing to switch
+            ;; and those defining a token the selection uses itself
+            relevant (into (into #{}
+                                 (filter #(> (count (ctob/get-themes-in-group tokens-lib %)) 1))
+                                 (cfo/direct-theme-groups tokens-lib (dwts/applied-token-names objects holder-ids)))
                            chosen)]
         ;; A theme is checked when every selected shape has it
         [:> token-context-entries*

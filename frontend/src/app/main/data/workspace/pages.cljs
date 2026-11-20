@@ -25,6 +25,7 @@
    [app.main.data.persistence :as-alias dps]
    [app.main.data.workspace.drawing :as dwd]
    [app.main.data.workspace.fix-deleted-fonts :as fdf]
+   [app.main.data.workspace.fix-empty-bools :as feb]
    [app.main.data.workspace.layout :as layout]
    [app.main.data.workspace.libraries :as dwl]
    [app.main.data.workspace.thumbnails :as dwth]
@@ -106,7 +107,8 @@
       (if (dsh/lookup-page state file-id page-id)
         (rx/concat
          (rx/of (initialize-page* file-id page-id)
-                (fdf/fix-deleted-fonts-for-page file-id page-id))
+                (fdf/fix-deleted-fonts-for-page file-id page-id)
+                (feb/fix-empty-bools-for-page file-id page-id))
 
          ;; Disable thumbnail generation in wasm renderer
          (if (features/active-feature? state "render-wasm/v1")

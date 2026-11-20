@@ -9735,12 +9735,17 @@ msgid "workspace.options.token-context.no-relevant-groups"
 msgstr "No theme group changes the tokens used here"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
-msgid "workspace.options.token-context.show-other-groups"
-msgstr "Show other groups (%s)"
+msgid "workspace.options.token-context.add-group"
+msgstr "Add a group… (%s more)"
+
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
-msgid "workspace.options.token-context.hide-other-groups"
-msgstr "Hide other groups"
+msgid "workspace.options.token-context.empty-group"
+msgstr "no tokens"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.empty-group-hint"
+msgstr "%s: its sets define no token, so choosing a theme changes nothing"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
 msgid "workspace.options.token-context.inherit"
@@ -9752,7 +9757,7 @@ msgstr "New context"
 
 #: src/app/main/ui/workspace/tokens/sets/lists.cljs
 msgid "workspace.tokens.contexts.banner"
-msgstr "These are the sets of the token context of %s, read-only here. Change it in Design › Token context."
+msgstr "Read-only: sets of the context of %s (Design › Token context)"
 
 #: src/app/main/ui/workspace/tokens/sets.cljs
 msgid "workspace.tokens.contexts.banner-page"
@@ -9760,7 +9765,7 @@ msgstr "this page"
 
 #: src/app/main/ui/workspace/tokens/sets.cljs
 msgid "workspace.tokens.contexts.banner-deselect"
-msgstr "Deselect to edit the file's sets"
+msgstr "Deselect to edit the file’s sets"
 
 #: src/app/main/ui/workspace/tokens/sets.cljs
 msgid "workspace.tokens.contexts.sets-disabled"

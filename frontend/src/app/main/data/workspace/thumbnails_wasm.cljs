@@ -62,8 +62,15 @@
            (timers/raf
             (fn [_]
               (try
-                (let [objects (dsh/lookup-page-objects @st/state file-id page-id)]
-                  (if-let [frame (get objects frame-id)]
+                (let [state   @st/state
+                      objects (dsh/lookup-page-objects state file-id page-id)
+                      ;; The WASM memory only holds the shapes of the current
+                      ;; page: a thumbnail requested for another one (the user
+                      ;; changed page meanwhile) would make it abort on a
+                      ;; missing shape
+                      frame   (when (= page-id (:current-page-id state))
+                                (get objects frame-id))]
+                  (if (some? frame)
                     (let [{ext-w :width ext-h :height} (wasm.api/get-shape-extrect frame-id)
                           {sel-w :width sel-h :height} (:selrect frame)
                           max-size (mth/max (or ext-w sel-w) (or ext-h sel-h))

@@ -1856,7 +1856,9 @@
       (t/is (= #{"Button" "Palette"} (cfo/relevant-theme-groups tokens-lib #{"button.bg"}))))
     (t/testing "a group only defining tokens nobody applies is left out"
       (t/is (= #{"Size"} (cfo/relevant-theme-groups tokens-lib #{"size.height"})))
-      (t/is (= #{} (cfo/relevant-theme-groups tokens-lib #{}))))))
+      (t/is (= #{} (cfo/relevant-theme-groups tokens-lib #{}))))
+    (t/testing "the direct groups leave out those only reached through references"
+      (t/is (= #{"Button"} (cfo/direct-theme-groups tokens-lib #{"button.bg"}))))))
 
 (t/deftest test-scope-chain-key
   (t/is (= [{:themes #{}} {:themes #{} :mode :isolated}]

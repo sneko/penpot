@@ -93,13 +93,28 @@
   resolve differently because of it, as a single undo entry: undoing it
   brings the scopes back too, not only the values. Only the shapes of
   `ids-by-page` (see `dwtp/propagate-tokens`) and their children can
-  resolve differently: a page mapped to nil is propagated whole."
+  resolve differently: a page mapped to nil is propagated whole.
+
+  The texts whose size changes are resized asynchronously, after the
+  propagation: the entry is closed once the changes stop for a moment,
+  so that one undo reverts them too."
   [event ids-by-page]
-  (let [undo-id (js/Symbol)]
-    (rx/of (dwu/start-undo-transaction undo-id)
-           event
-           (dwtp/propagate-workspace-tokens ids-by-page)
-           (dwu/commit-undo-transaction undo-id))))
+  (ptk/reify ::with-propagation
+    ptk/WatchEvent
+    (watch [_ _ stream]
+      (let [undo-id (js/Symbol)]
+        (rx/merge
+         (rx/of (dwu/start-undo-transaction undo-id :timeout false)
+                event
+                (dwtp/propagate-workspace-tokens ids-by-page))
+         (->> (rx/merge
+               (->> stream
+                    (rx/filter (ptk/type? ::dch/commit-changes))
+                    (rx/debounce 300))
+               ;; Closed anyway when nothing comes, or keeps coming
+               (rx/timer 3000))
+              (rx/take 1)
+              (rx/map (fn [_] (dwu/commit-undo-transaction undo-id)))))))))
 
 (defn update-page-token-scope
   "Sets the token scope of the page `page-id` (the current one with nil)
@@ -116,7 +131,7 @@
             changes (-> (pcb/empty-changes it)
                         (pcb/with-page page)
                         (pcb/mod-page {:token-scope (f scope)}))]
-        (with-propagation (dch/commit-changes changes) {(:id page) nil})))))
+        (rx/of (with-propagation (dch/commit-changes changes) {(:id page) nil}))))))
 
 (defn set-page-token-scope
   "Sets the token scope of the page `page-id` (the current one when not
@@ -138,7 +153,8 @@
     (watch [_ state _]
       (let [tokens-lib (dsh/lookup-tokens-lib state)
             page-id    (:current-page-id state)]
-        (with-propagation
+        (rx/of
+         (with-propagation
           (dwsh/update-shapes ids
                               (fn [shape]
                                 (let [before (:token-scope shape)
@@ -155,7 +171,7 @@
                                     (assoc shape :token-scope after)))))
           ;; The copies of a main follow through the component sync,
           ;; which propagates the shapes it changes
-          {page-id ids})))))
+          {page-id ids}))))))
 
 (defn set-shape-token-scope
   "Sets the token scope of a shape, or removes it with nil, and propagates
@@ -202,10 +218,11 @@
                   (-> (or (:token-scope ref-shape) empty-scope)
                       (dissoc :mode-overridden)
                       (assoc :overrides #{})))))]
-        (with-propagation
+        (rx/of
+         (with-propagation
           (dwsh/update-shapes shape-ids
                               (fn [shape]
                                 (if-let [scope (main-scope shape)]
                                   (assoc shape :token-scope scope)
                                   (dissoc shape :token-scope))))
-          {page-id shape-ids})))))
+          {page-id shape-ids}))))))

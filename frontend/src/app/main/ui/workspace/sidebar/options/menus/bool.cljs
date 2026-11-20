@@ -35,6 +35,13 @@
         render-wasm-enabled?
         (features/use-feature "render-wasm/v1")
 
+        ;; `shapes-with-children` is deferred (see `design-menu*`): just
+        ;; after the selection changes it still describes the previous
+        ;; one, and the buttons would flash before it catches up
+        stale?
+        (and (some? head-id)
+             (not-any? #(= head-id (:id %)) shapes-with-children))
+
         has-invalid-shapes?
         (some (if render-wasm-enabled?
                 cfh/frame-shape?
@@ -69,7 +76,8 @@
         flatten-objects
         (mf/use-fn  #(st/emit! (dwps/convert-selected-to-path)))]
 
-    (when (not (and disabled-bool-btns disabled-flatten))
+    (when (and (not stale?)
+               (not (and disabled-bool-btns disabled-flatten)))
       [:div {:class (stl/css :boolean-options)}
        [:div {:class (stl/css :bool-group)}
         [:& radio-buttons {:selected (d/name head-bool-type)

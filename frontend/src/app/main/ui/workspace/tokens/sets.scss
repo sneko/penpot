@@ -175,8 +175,10 @@
   display: flex;
   flex-direction: column;
   gap: deprecated.$s-4;
-  margin: deprecated.$s-4 deprecated.$s-8;
-  padding: deprecated.$s-8;
+  // Aligned on the theme selector above (`.themes-wrapper`)
+  margin-block: var(--sp-xs);
+  margin-inline: var(--sp-m) var(--sp-s);
+  padding: var(--sp-s);
   border-radius: deprecated.$br-8;
   background-color: var(--color-background-tertiary);
 }

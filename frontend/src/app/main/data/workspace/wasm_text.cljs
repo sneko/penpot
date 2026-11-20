@@ -10,6 +10,7 @@
   This exists to avoid circular deps:
   workspace.texts -> workspace.libraries -> workspace.texts"
   (:require
+   [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.files.helpers :as cfh]
    [app.common.geom.matrix :as gmt]
@@ -66,8 +67,15 @@
 
   ([{:keys [id points selrect] :as shape} content]
    (when-let [new-size (get-wasm-text-new-size shape content)]
-     (let [width-scale  (/ (:width new-size) (:width selrect))
-           height-scale (/ (:height new-size) (:height selrect))
+     (let [;; A degenerate axis cannot be scaled (an empty auto-width
+           ;; text imported with a zero width would give an infinite
+           ;; scale), so it is left unchanged
+           axis-scale   (fn [new-value old-value]
+                          (if (and (d/num? new-value) (pos? old-value))
+                            (/ new-value old-value)
+                            1))
+           width-scale  (axis-scale (:width new-size) (:width selrect))
+           height-scale (axis-scale (:height new-size) (:height selrect))
            resize-v     (gpt/point width-scale height-scale)
            origin       (first points)]
        {id
