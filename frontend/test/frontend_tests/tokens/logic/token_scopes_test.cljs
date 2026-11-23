@@ -11,6 +11,7 @@
    [app.common.test-helpers.ids-map :as cthi]
    [app.common.test-helpers.shapes :as cths]
    [app.common.test-helpers.tokens :as ctht]
+   [app.common.types.file :as ctf]
    [app.common.types.tokens-lib :as ctob]
    [app.common.types.tokens-status :as ctos]
    [app.config :as cf]
@@ -199,3 +200,24 @@
          (await (async/wait-for #(= 8 (radius (state) :rect-mobile)) "undone"))
          (t/is (contains? (theme) (cthi/id :mobile)))
          (t/is (not (contains? (theme) (cthi/id :desktop)))))))))
+
+(t/deftest test-follow-main-group
+  (t/testing "Auto on a copy takes its main's theme and stops overriding the group, Auto elsewhere leaves the group out"
+    (t/async
+      done
+      (let [file  (-> (setup-file)
+                      (ctho/add-simple-component-with-copy :component :main-root :main-child :copy-root
+                                                           :main-root-params {:token-scope {:themes #{(cthi/id :desktop)}}}))
+            file  (ctf/update-file-data
+                   file
+                   (fn [data]
+                     (update-in data [:pages-index (cthf/current-page-id file) :objects (cthi/id :copy-root)]
+                                assoc :token-scope {:themes #{(cthi/id :mobile)} :overrides #{"Platform"}})))
+            store (ths/setup-store file)]
+        (tohs/run-store-async
+         store done [(dwts/follow-main-group [(cthi/id :copy-root) (cthi/id :board-desktop)] "Platform")]
+         (fn [state]
+           (let [file' (ths/get-file-from-state state)]
+             (t/is (= {:themes #{(cthi/id :desktop)} :overrides #{}}
+                      (:token-scope (cths/get-shape file' :copy-root))))
+             (t/is (= {:themes #{}} (:token-scope (cths/get-shape file' :board-desktop)))))))))))

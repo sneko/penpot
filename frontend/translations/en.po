@@ -9695,6 +9695,10 @@ msgid "workspace.options.token-context.auto"
 msgstr "Not set"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.auto-main"
+msgstr "From main · %s"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
 msgid "workspace.options.token-context.auto-inherited"
 msgstr "Inherited · %s (%s)"
 

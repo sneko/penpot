@@ -419,6 +419,38 @@
                                       (dsh/lookup-libraries state)
                                       shape))))
 
+(defn follow-main-group
+  "Sets `group` back to Auto on the shapes of `shape-ids`, and
+  propagates. On a component copy, Auto follows its main: the copy takes
+  the theme its main chooses for the group (none when the main inherits
+  it), and no longer overrides it, so it follows the main's later
+  changes too."
+  [shape-ids group]
+  (ptk/reify ::follow-main-group
+    ptk/WatchEvent
+    (watch [_ state _]
+      (let [tokens-lib (dsh/lookup-tokens-lib state)
+            ids        (holder-ids state shape-ids)
+            follow     (fn [shape]
+                         (if (ctk/in-component-copy? shape)
+                           (let [main-scope (main-token-scope state shape)
+                                 theme-id   (d/seek #(= group (:group (ctob/get-theme tokens-lib %)))
+                                                    (:themes main-scope))]
+                             (assoc shape :token-scope
+                                    (-> (or (:token-scope shape) empty-scope)
+                                        (set-group-theme tokens-lib group theme-id)
+                                        (update :overrides (fnil disj #{}) group))))
+                           (let [scope (update-scope (:token-scope shape)
+                                                     #(set-group-theme % tokens-lib group nil))]
+                             (if scope
+                               (assoc shape :token-scope scope)
+                               (dissoc shape :token-scope)))))]
+        (when (and tokens-lib (seq ids))
+          (rx/of
+           (dwtp/with-propagation
+             (dwsh/update-shapes ids follow)
+             {:page-id (:current-page-id state) :root-ids ids})))))))
+
 (defn remove-token-scopes
   "Removes the scopes of the shapes of `shape-ids` and propagates. A
   component copy goes back to the scope of its main instead: no

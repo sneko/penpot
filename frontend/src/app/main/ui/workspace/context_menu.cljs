@@ -794,23 +794,28 @@
   checked. Auto and the themes are direct children: a submenu needs
   more than one."
   {::mf/private true}
-  [{:keys [tokens-lib group active? update-scopes]}]
+  [{:keys [tokens-lib group active? update-scopes on-auto]}]
   (let [themes (dwts/group-themes tokens-lib group)
-        auto?  (not-any? #(active? (:id %)) themes)]
+        auto?  (not-any? #(active? (:id %)) themes)
+        ;; On component copies, Auto follows their main (`on-auto`)
+        auto!  (fn []
+                 (if on-auto
+                   (on-auto group)
+                   (update-scopes #(dwts/set-group-theme % tokens-lib group nil))))]
     [:> menu-entry* {:title group}
      [:> menu-entry* {:title (tr "workspace.shape.menu.token-context.auto")
                       :is-selected auto?
-                      :on-click #(update-scopes (fn [scope]
-                                                  (dwts/set-group-theme scope tokens-lib group nil)))}]
+                      :on-click auto!}]
      (for [theme themes
            :let [id      (:id theme)
                  checked (active? id)]]
        [:> menu-entry* {:key (dm/str id)
                         :title (:name theme)
                         :is-selected checked
-                        :on-click #(update-scopes (fn [scope]
-                                                    (dwts/set-group-theme scope tokens-lib group
-                                                                          (when-not checked id))))}])]))
+                        :on-click #(if checked
+                                     (auto!)
+                                     (update-scopes (fn [scope]
+                                                      (dwts/set-group-theme scope tokens-lib group id))))}])]))
 
 (mf/defc token-context-entries*
   "The token context entries of the menu of boards, groups, copies and
@@ -822,7 +827,7 @@
   `isolated?` and `on-toggle-isolated` cut it from the contexts above,
   and `on-remove` removes it."
   {::mf/private true}
-  [{:keys [tokens-lib has-context active? update-scopes on-remove relevant-groups
+  [{:keys [tokens-lib has-context active? update-scopes on-auto on-remove relevant-groups
            isolated? on-toggle-isolated]}]
   (let [groups      (dwts/theme-groups tokens-lib)
         relevant?   (if (some? relevant-groups)
@@ -845,7 +850,8 @@
                                           :tokens-lib tokens-lib
                                           :group group
                                           :active? active?
-                                          :update-scopes update-scopes}])
+                                          :update-scopes update-scopes
+                                          :on-auto on-auto}])
          (when (seq other)
            [:*
             [:> menu-separator* {}]
@@ -854,14 +860,16 @@
               [:> token-context-group-menu* {:tokens-lib tokens-lib
                                              :group (first other)
                                              :active? active?
-                                             :update-scopes update-scopes}]
+                                             :update-scopes update-scopes
+                                             :on-auto on-auto}]
               [:> menu-entry* {:title (tr "workspace.shape.menu.token-context.other-groups")}
                (for [group other]
                  [:> token-context-group-menu* {:key (dm/str "group-" group)
                                                 :tokens-lib tokens-lib
                                                 :group group
                                                 :active? active?
-                                                :update-scopes update-scopes}])])])])
+                                                :update-scopes update-scopes
+                                                :on-auto on-auto}])])])])
       (when has-context
         [:*
          [:> menu-separator* {}]
@@ -907,6 +915,7 @@
           :isolated? (and (seq holders) (every? #(= :isolated (get-in % [:token-scope :mode])) holders))
           :on-toggle-isolated #(st/emit! (dwts/update-token-scopes holder-ids dwts/toggle-isolated))
           :update-scopes #(st/emit! (dwts/update-token-scopes holder-ids %))
+          :on-auto #(st/emit! (dwts/follow-main-group holder-ids %))
           :on-remove #(st/emit! (dwts/remove-token-scopes with-ids))}]))))
 
 (mf/defc context-menu-delete*

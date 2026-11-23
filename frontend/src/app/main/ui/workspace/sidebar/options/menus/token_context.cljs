@@ -13,6 +13,7 @@
   (:require
    [app.common.data :as d]
    [app.common.files.tokens :as cfo]
+   [app.common.types.component :as ctk]
    [app.common.types.tokens-lib :as ctob]
    [app.common.uuid :as uuid]
    [app.config :as cf]
@@ -33,6 +34,9 @@
 ;; Option ids of the selects. Theme ids are uuids, so they cannot collide.
 (def ^:private auto-option-id "auto")
 (def ^:private mixed-option-id "mixed")
+;; A component copy overriding a group with no theme: it inherits the
+;; group from the containers above instead of following its main
+(def ^:private above-option-id "above")
 
 ;; The groups added by hand to choose a theme of, for the selection of
 ;; `:key`: they
@@ -84,18 +88,42 @@
 
 (mf/defc group-row*
   {::mf/private true}
-  [{:keys [tokens-lib group scopes inherited objects on-select effect]}]
+  [{:keys [tokens-lib group roots inherited objects on-select effect]}]
   (let [themes   (dwts/group-themes tokens-lib group)
-        chosen   (into #{} (map #(group-theme-id tokens-lib % group)) scopes)
+        ;; A component copy that does not override the group follows its
+        ;; main: Auto, which is the main's theme for it
+        main-id  (fn [{:keys [main-scope]}] (group-theme-id tokens-lib main-scope group))
+        follows? (fn [{:keys [scope copy?] :as root}]
+                   (and copy?
+                        (not (contains? (:overrides scope) group))
+                        (= (group-theme-id tokens-lib scope group) (main-id root))))
+        above?   (fn [{:keys [scope copy?] :as root}]
+                   (and copy?
+                        (contains? (:overrides scope) group)
+                        (nil? (group-theme-id tokens-lib scope group))
+                        (some? (main-id root))))
+        chosen   (into #{}
+                       (map #(cond (follows? %) nil
+                                   (above? %)   above-option-id
+                                   :else        (group-theme-id tokens-lib (:scope %) group)))
+                       roots)
         mixed?   (> (count chosen) 1)
         theme-id (first chosen)
         selected (cond mixed?          mixed-option-id
                        (some? theme-id) (str theme-id)
                        :else           auto-option-id)
+        main-ids (when (every? :copy? roots) (into #{} (map main-id) roots))
         options  (cond-> [{:id auto-option-id
-                           :label (auto-label inherited tokens-lib objects)}]
+                           :label (if-let [main-theme (when (= 1 (count main-ids))
+                                                        (some->> (first main-ids) (ctob/get-theme tokens-lib)))]
+                                    (tr "workspace.options.token-context.auto-main" (:name main-theme))
+                                    (auto-label inherited tokens-lib objects))}]
                    mixed? (conj {:id mixed-option-id
                                  :label (tr "workspace.options.token-context.mixed")})
+                   ;; Only shown in that state: choosing Auto follows the main
+                   (contains? chosen above-option-id)
+                   (conj {:id above-option-id
+                          :label (auto-label inherited tokens-lib objects)})
                    :always (into (map (fn [theme] {:id (str (:id theme)) :label (:name theme)}))
                                  themes))
         ;; A group whose sets define no token cannot change anything (an
@@ -123,7 +151,7 @@
         (mf/use-fn
          (mf/deps group on-select)
          (fn [option-id]
-           (when-not (= option-id mixed-option-id)
+           (when-not (contains? #{mixed-option-id above-option-id} option-id)
              (on-select group (when-not (= option-id auto-option-id)
                                 (uuid/parse option-id))))))]
     [:div {:class (stl/css :row)}
@@ -261,12 +289,15 @@
 
         on-select
         (mf/use-fn
-         (mf/deps tokens-lib on-update selection-key)
+         (mf/deps tokens-lib on-update selection-key roots)
          (fn [group theme-id]
            ;; Kept listed until the selection changes, also set back to
            ;; Auto: the row does not vanish under the pointer
            (add-group! group)
-           (on-update #(dwts/set-group-theme % tokens-lib group theme-id))))
+           (if (and (nil? theme-id) (some :copy? roots))
+             ;; Auto on a copy follows its main
+             (st/emit! (dwts/follow-main-group (mapv :id roots) group))
+             (on-update #(dwts/set-group-theme % tokens-lib group theme-id)))))
 
         on-toggle-inherit
         (mf/use-fn
@@ -425,7 +456,7 @@
           [:> group-row* {:key group
                           :tokens-lib tokens-lib
                           :group group
-                          :scopes scopes
+                          :roots roots
                           :inherited (when-not isolated? (get inherited group))
                           :objects objects
                           :effect (get effects group)
@@ -456,12 +487,16 @@
             (dwts/unmasked-theme-groups objects ids tokens-lib)))
 
         roots
-        (mf/with-memo [page objects holders]
-          (mapv (fn [{:keys [id parent-id token-scope]}]
-                  {:id id
-                   :scope token-scope
-                   :chain-above (cfo/scope-chain page objects parent-id)})
-                holders))
+        (mf/with-memo [page objects holders libraries]
+          (let [state @st/state]
+            (mapv (fn [{:keys [id parent-id token-scope] :as shape}]
+                    (let [copy? (ctk/in-component-copy? shape)]
+                      (cond-> {:id id
+                               :scope token-scope
+                               :chain-above (cfo/scope-chain page objects parent-id)}
+                        copy? (assoc :copy? true
+                                     :main-scope (dwts/main-token-scope state shape)))))
+                  holders)))
 
         ;; The groups the component of a copy is designed with stay
         ;; listed, even back to Auto
