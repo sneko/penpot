@@ -9679,10 +9679,6 @@ msgid "workspace.shape.menu.token-context"
 msgstr "Token context"
 
 #: src/app/main/ui/workspace/context_menu.cljs
-msgid "workspace.shape.menu.token-context.new"
-msgstr "New context"
-
-#: src/app/main/ui/workspace/context_menu.cljs
 msgid "workspace.shape.menu.token-context.auto"
 msgstr "Auto (inherited)"
 
