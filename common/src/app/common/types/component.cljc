@@ -100,6 +100,7 @@
    :bool-content            :content-group
    :exports                 :exports-group
    :grids                   :grids-group
+   :token-scope             :token-scope-group
 
    :show-content            :show-content
 

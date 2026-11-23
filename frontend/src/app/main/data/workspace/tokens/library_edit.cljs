@@ -305,6 +305,30 @@
                                                    new-token-theme))]
               (rx/of (dch/commit-changes changes)))))))))
 
+(defn- move-override-group-changes
+  "`changes` with the token scope overrides of the component copies of
+  every page following the theme `id` from the group `old-group` to
+  `new-group` (see `cfo/move-override-group`)."
+  [changes data tokens-lib id old-group new-group]
+  (let [old-empty? (every? #(= id %) (ctob/get-themes-in-group tokens-lib old-group))]
+    (reduce (fn [changes page]
+              (let [objects (:objects page)
+                    ids     (into []
+                                  (comp (filter #(contains? (get-in % [:token-scope :overrides]) old-group))
+                                        (map :id))
+                                  (vals objects))]
+                (cond-> changes
+                  (seq ids)
+                  (-> (pcb/with-page page)
+                      (pcb/with-objects objects)
+                      (pcb/update-shapes ids
+                                         #(update % :token-scope cfo/move-override-group
+                                                  id old-group new-group old-empty?)
+                                         {:attrs #{:token-scope}
+                                          :ignore-touched true})))))
+            changes
+            (vals (:pages-index data)))))
+
 (defn update-token-theme
   [id token-theme]
   (ptk/reify ::update-token-theme
@@ -312,16 +336,22 @@
     (watch [it state _]
       (check-editable-tokens! state)
       (let [data       (dsh/lookup-file-data state)
-            tokens-lib (dsh/lookup-tokens-lib state)]
+            tokens-lib (dsh/lookup-tokens-lib state)
+            old-group  (some-> tokens-lib (ctob/get-theme id) :group)
+            new-group  (:group token-theme)]
         (if (and (not= id (ctob/get-id token-theme))
                  (ctob/get-theme tokens-lib (ctob/get-id token-theme)))
           (rx/of (ntf/show {:content (tr "errors.token-theme-already-exists")
                             :type :toast
                             :level :error
                             :timeout 9000}))
-          (let [changes (-> (pcb/empty-changes it)
-                            (pcb/with-library-data data)
-                            (clo/generate-update-token-theme token-theme))]
+          (let [changes (cond-> (-> (pcb/empty-changes it)
+                                    (pcb/with-library-data data)
+                                    (clo/generate-update-token-theme token-theme))
+                          ;; The token contexts of copies name the groups
+                          ;; they override
+                          (and (some? old-group) (not= old-group new-group))
+                          (move-override-group-changes data tokens-lib id old-group new-group))]
             (rx/of (dch/commit-changes changes))))))))
 
 (defn set-token-theme-active

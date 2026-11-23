@@ -1880,6 +1880,27 @@
     (t/testing "the direct groups leave out those only reached through references"
       (t/is (= #{"Button"} (cfo/direct-theme-groups tokens-lib #{"button.bg"}))))))
 
+(t/deftest test-move-override-group
+  (let [moved (uuid/next)
+        other (uuid/next)]
+    (t/testing "a copy that chose the moved theme overrides its new group"
+      (t/is (= {:themes #{moved} :overrides #{"New"}}
+               (cfo/move-override-group {:themes #{moved} :overrides #{"Old"}} moved "Old" "New" false))))
+
+    (t/testing "a copy that chose another theme of the old group keeps it"
+      (t/is (= {:themes #{other} :overrides #{"Old"}}
+               (cfo/move-override-group {:themes #{other} :overrides #{"Old"}} moved "Old" "New" false))))
+
+    (t/testing "a copy that chose Auto follows the group once its last theme has moved"
+      (t/is (= {:themes #{} :overrides #{"Old"}}
+               (cfo/move-override-group {:themes #{} :overrides #{"Old"}} moved "Old" "New" false)))
+      (t/is (= {:themes #{} :overrides #{"New"}}
+               (cfo/move-override-group {:themes #{} :overrides #{"Old"}} moved "Old" "New" true))))
+
+    (t/testing "a copy that does not override the group is unchanged"
+      (let [scope {:themes #{moved} :overrides #{"Other"}}]
+        (t/is (identical? scope (cfo/move-override-group scope moved "Old" "New" true)))))))
+
 (t/deftest test-scope-chain-key
   (t/is (= [{:themes #{}} {:themes #{} :mode :isolated}]
            (cfo/scope-chain-key [{:themes #{} :origin :page :overrides #{"Mode"}}
@@ -1921,6 +1942,60 @@
       (t/is (= [(assoc page-scope :origin :page)]
                (cfo/scope-chain {:token-scope page-scope} objects nil)))
       (t/is (= [] (cfo/scope-chain {} objects nil))))))
+
+(t/deftest test-copy-scope-overrides
+  (let [tokens-lib (clashing-tokens-lib)
+        primary    (thi/id :button-primary)
+        error      (thi/id :button-error)
+        modal      (thi/id :modal-default)]
+    (t/testing "the groups whose theme changes"
+      (t/is (= {:themes #{error modal} :overrides #{"Button"}}
+               (cfo/copy-scope-overrides tokens-lib
+                                         {:themes #{primary modal}}
+                                         {:themes #{error modal}}))))
+
+    (t/testing "a group set back to Auto is an override too"
+      (t/is (= {:themes #{primary} :overrides #{"Modal"}}
+               (cfo/copy-scope-overrides tokens-lib
+                                         {:themes #{primary modal}}
+                                         {:themes #{primary}}))))
+
+    (t/testing "the previous overrides and the mode are kept"
+      (t/is (= {:themes #{primary modal} :mode :isolated
+                :overrides #{"Button" "Modal"} :mode-overridden true}
+               (cfo/copy-scope-overrides tokens-lib
+                                         {:themes #{primary} :overrides #{"Button"}}
+                                         {:themes #{primary modal} :mode :isolated}))))))
+
+(t/deftest test-merge-copy-scope
+  (let [tokens-lib (clashing-tokens-lib)
+        primary    (thi/id :button-primary)
+        error      (thi/id :button-error)
+        modal      (thi/id :modal-default)]
+    (t/testing "the copy keeps its groups and follows the main for the others"
+      ;; The copy chose Error, the main then gets the modal theme
+      (t/is (= {:themes #{error modal} :overrides #{"Button"}}
+               (cfo/merge-copy-scope tokens-lib
+                                     {:themes #{primary modal}}
+                                     {:themes #{error} :overrides #{"Button"}}))))
+
+    (t/testing "a group the copy set to Auto stays without theme"
+      (t/is (= {:themes #{primary} :overrides #{"Modal"}}
+               (cfo/merge-copy-scope tokens-lib
+                                     {:themes #{primary modal}}
+                                     {:themes #{primary} :overrides #{"Modal"}}))))
+
+    (t/testing "without overrides the copy follows the main"
+      (t/is (= {:themes #{primary} :overrides #{} :mode :isolated}
+               (cfo/merge-copy-scope tokens-lib
+                                     {:themes #{primary} :mode :isolated}
+                                     {:themes #{error} :overrides #{}}))))
+
+    (t/testing "the mode follows the main unless overridden"
+      (t/is (= {:themes #{error} :overrides #{"Button"} :mode-overridden true}
+               (cfo/merge-copy-scope tokens-lib
+                                     {:themes #{primary} :mode :isolated}
+                                     {:themes #{error} :overrides #{"Button"} :mode-overridden true}))))))
 
 (t/deftest test-theme-origin-by-group
   (let [tokens-lib (clashing-tokens-lib)

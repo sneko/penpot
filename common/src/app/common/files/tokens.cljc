@@ -889,6 +889,64 @@
   (let [{:keys [groups]} (relevance-index tokens-lib)]
     (into #{} (mapcat #(get groups %)) token-names)))
 
+(defn- theme-ids-by-group
+  [tokens-lib scope]
+  (into {}
+        (keep (fn [id]
+                (when-let [theme (ctob/get-theme tokens-lib id)]
+                  [(:group theme) id])))
+        (:themes scope)))
+
+(defn copy-scope-overrides
+  "The scope `after` of a component copy changed from `before`, with
+   its overrides: those of `before`, plus the theme groups whose theme
+   changes in `:overrides` and `:mode-overridden` when the mode
+   changes."
+  [tokens-lib before after]
+  (let [themes-before (theme-ids-by-group tokens-lib before)
+        themes-after  (theme-ids-by-group tokens-lib after)
+        changed       (into #{}
+                            (filter #(not= (get themes-before %) (get themes-after %)))
+                            (concat (keys themes-before) (keys themes-after)))]
+    (cond-> (assoc after :overrides (into (or (:overrides before) #{}) changed))
+      (or (:mode-overridden before) (not= (:mode before) (:mode after)))
+      (assoc :mode-overridden true))))
+
+(defn merge-copy-scope
+  "The scope of a component copy synced with `main-scope`, the scope of
+   its main: the copy keeps its choices for the groups (and the mode) of
+   its `:overrides` (and its mode with `:mode-overridden`) and follows
+   the main for the others."
+  [tokens-lib main-scope copy-scope]
+  (let [overrides   (or (:overrides copy-scope) #{})
+        overridden? (fn [id]
+                      (contains? overrides (:group (ctob/get-theme tokens-lib id))))
+        themes      (into (into #{} (remove overridden?) (:themes main-scope))
+                          (filter overridden?)
+                          (:themes copy-scope))
+        mode-overridden? (:mode-overridden copy-scope)
+        mode        (if mode-overridden?
+                      (:mode copy-scope)
+                      (:mode main-scope))]
+    (cond-> {:themes themes :overrides overrides}
+      (some? mode)     (assoc :mode mode)
+      mode-overridden? (assoc :mode-overridden true))))
+
+(defn move-override-group
+  "The scope of a component copy once the theme `theme-id` moved from
+   the group `old-group` to `new-group` (`old-empty?` when no theme is
+   left in `old-group`). Overrides name groups, so a copy that chose
+   that theme now overrides `new-group`, and a copy that chose Auto for
+   a group renamed theme by theme follows it to its new name once its
+   last theme has moved. Otherwise the copy would silently go back to
+   the theme of its main on the next sync."
+  [scope theme-id old-group new-group old-empty?]
+  (let [overrides (:overrides scope)]
+    (if (and (contains? overrides old-group)
+             (or (contains? (:themes scope) theme-id) old-empty?))
+      (assoc scope :overrides (-> overrides (disj old-group) (conj new-group)))
+      scope)))
+
 (defn theme-origin-by-group
   "For each theme group, the theme a shape under the scopes of `chain`
    (outermost first, each with its :origin, see `scope-chain`) resolves

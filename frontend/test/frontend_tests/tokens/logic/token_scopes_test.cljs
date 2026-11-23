@@ -13,6 +13,7 @@
    [app.common.types.tokens-lib :as ctob]
    [app.common.types.tokens-status :as ctos]
    [app.config :as cf]
+   [app.main.data.workspace.tokens.library-edit :as dwtl]
    [app.main.data.workspace.tokens.propagation :as dwtp]
    [app.main.data.workspace.tokens.scopes :as dwts]
    [cljs.test :as t :include-macros true]
@@ -120,3 +121,25 @@
          (fn [state]
            (t/is (= 16 (radius state :rect-mobile)))
            (t/is (= 8 (radius state :rect-desktop)))))))))
+
+(t/deftest test-rename-theme-group-moves-overrides
+  (t/testing "the overrides of a context follow a theme group renamed theme by theme"
+    (t/async
+      done
+      (let [file     (-> (setup-file)
+                         ;; A copy that chose Desktop, another that chose Auto
+                         (ctho/add-frame :board-copy :token-scope {:themes #{(cthi/id :desktop)}
+                                                                   :overrides #{"Platform"}})
+                         (ctho/add-frame :board-auto :token-scope {:themes #{}
+                                                                   :overrides #{"Platform"}}))
+            store    (ths/setup-store file)
+            lib      (ctht/get-tokens-lib file)
+            move     (fn [label]
+                       (let [theme (ctob/get-theme lib (cthi/id label))]
+                         (dwtl/update-token-theme (:id theme) (assoc theme :group "Device"))))]
+        (tohs/run-store-async
+         store done [(move :desktop) (move :mobile)]
+         (fn [state]
+           (let [file' (ths/get-file-from-state state)]
+             (t/is (= #{"Device"} (get-in (cths/get-shape file' :board-copy) [:token-scope :overrides])))
+             (t/is (= #{"Device"} (get-in (cths/get-shape file' :board-auto) [:token-scope :overrides]))))))))))
