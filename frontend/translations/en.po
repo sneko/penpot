@@ -8763,18 +8763,6 @@ msgstr "Comments hidden"
 msgid "workspace.toast.comments-visible"
 msgstr "Comments visible"
 
-#: src/app/main/ui/workspace/viewport/token_scopes.cljs
-msgid "workspace.token-scope-area.isolated"
-msgstr "%s (isolated)"
-
-#: src/app/main/ui/workspace/viewport/token_scopes.cljs
-msgid "workspace.token-scope-area.no-themes"
-msgstr "No themes"
-
-#: src/app/main/ui/workspace/viewport/token_scopes.cljs
-msgid "workspace.token-scope-area.remove"
-msgstr "Remove all context overrides"
-
 #: src/app/main/ui/workspace/tokens/themes/theme_selector.cljs:112
 msgid "workspace.tokens.active-themes"
 msgstr "%s active themes"

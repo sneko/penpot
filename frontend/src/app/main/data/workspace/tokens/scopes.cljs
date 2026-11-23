@@ -21,10 +21,8 @@
    [app.main.data.workspace.shapes :as dwsh]
    [app.main.data.workspace.tokens.propagation :as dwtp]
    [app.main.data.workspace.undo :as dwu]
-   [app.util.i18n :refer [tr]]
    [beicon.v2.core :as rx]
    [clojure.string :as cstr]
-   [cuerdas.core :as str]
    [potok.v2.core :as ptk]))
 
 ;; A scope without themes: a context that inherits everything
@@ -260,34 +258,6 @@
                     (or (not (contains? reachable group))
                         (every? #(ineffective-for-root? group %) uses))))
           groups)))
-
-;; Still used by the context menu and the canvas outlines
-(defn theme-path
-  "A theme as \"Group / Theme\", or its name when it has no group."
-  [{:keys [group name]}]
-  (if (seq group)
-    (str group " / " name)
-    name))
-
-(defn- themes-label
-  "The names of `themes` in theme group order, or a placeholder."
-  [tokens-lib themes]
-  (let [order (into {} (map-indexed (fn [i group] [group i])) (ctob/get-theme-groups tokens-lib))
-        names (->> themes
-                   (sort-by #(get order (:group %) -1))
-                   (map :name)
-                   (str/join " · "))]
-    (if (str/blank? names)
-      (tr "workspace.token-scope-area.no-themes")
-      names)))
-
-(defn scope-label
-  "The names of the scope's themes, and a mark when it is isolated."
-  [tokens-lib {:keys [themes mode]}]
-  (let [names (themes-label tokens-lib (keep #(ctob/get-theme tokens-lib %) themes))]
-    (if (= mode :isolated)
-      (tr "workspace.token-scope-area.isolated" names)
-      names)))
 
 (defn- with-propagation
   "`event`, which changes scopes, and the propagation of the tokens that
