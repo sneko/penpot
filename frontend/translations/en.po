@@ -9720,20 +9720,16 @@ msgstr "Add a theme group (%s available)"
 
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
-msgid "workspace.options.token-context.empty-group"
-msgstr "no tokens"
-
-#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
 msgid "workspace.options.token-context.empty-group-hint"
 msgstr "%s: its sets define no token, so choosing a theme changes nothing"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
-msgid "workspace.options.token-context.ineffective"
-msgstr "no effect here"
-
-#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
 msgid "workspace.options.token-context.ineffective-hint"
 msgstr "%s: none of its themes changes the tokens used here, with the contexts set above and below"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.masked-hint"
+msgstr "%s: here the value of %s comes from %s (a nearer context, or a later set at the same level)"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
 msgid "workspace.options.token-context.isolated-hint"

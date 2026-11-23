@@ -9,6 +9,7 @@
   `:token-scope` (see `cto/schema:token-scope`). The UI calls them token
   contexts."
   (:require
+   [app.common.data :as d]
    [app.common.files.changes-builder :as pcb]
    [app.common.files.helpers :as cfh]
    [app.common.files.tokens :as cfo]
@@ -168,16 +169,18 @@
                  (reduce #(walk %1 %2 chain false) acc (:shapes shape))))]
     (walk {} root-id [] true)))
 
-;; Results of `ineffective-theme-groups` for one group, by tokens library,
+;; Results of `theme-group-effect` for one group, by tokens library,
 ;; tokens status, objects and roots (the same selection shown again)
-(defonce ^:private ineffective-cache (atom {:key nil :by-group {}}))
+(defonce ^:private effect-cache (atom {:key nil :by-group {}}))
 
-(declare ineffective-theme-groups)
+(declare ineffective-theme-groups masked-group-tokens)
 
-(defn ineffective-theme-group?
-  "Whether choosing a theme of `group` on the roots changes nothing (see
-  `ineffective-theme-groups`), cached while the tokens, the page objects
-  and the roots stay the same."
+(defn theme-group-effect
+  "What choosing a theme of `group` on the roots does: `:ineffective?`
+  when it changes nothing (see `ineffective-theme-groups`), and
+  `:masked`, the tokens used below that the group defines but another
+  group gives the value of (see `masked-group-tokens`). Cached while the
+  tokens, the page objects and the roots stay the same."
   [tokens-status tokens-lib objects roots group]
   (let [key   [tokens-status tokens-lib objects (mapv (juxt :id :scope :chain-above) roots)]
         ;; The tokens and page objects by identity (comparing them by value
@@ -188,16 +191,76 @@
                      (identical? (nth key 1) (nth other 1))
                      (identical? (nth key 2) (nth other 2))
                      (= (nth key 3) (nth other 3))))
-        cache @ineffective-cache]
+        cache @effect-cache]
     (if (and (same? (:key cache)) (contains? (:by-group cache) group))
       (get-in cache [:by-group group])
-      (let [result (contains? (ineffective-theme-groups tokens-status tokens-lib objects roots [group]) group)]
-        (swap! ineffective-cache
+      (let [result {:ineffective? (contains? (ineffective-theme-groups tokens-status tokens-lib objects roots [group]) group)
+                    :masked       (masked-group-tokens tokens-status tokens-lib objects roots group)}]
+        (swap! effect-cache
                (fn [cache]
                  (if (same? (:key cache))
                    (assoc-in cache [:by-group group] result)
                    {:key key :by-group {group result}})))
         result))))
+
+(defn- set-owners
+  "The name to show for the owner of each set id: the group of the first
+  theme using it (the theme itself for a theme without a group), or the
+  set name when no theme uses it."
+  [tokens-lib]
+  (let [by-theme (into {}
+                       (comp (remove ctob/hidden-theme?)
+                             (mapcat (fn [theme]
+                                       (let [owner (if (seq (:group theme)) (:group theme) (:name theme))]
+                                         (keep #(some-> (ctob/get-set-by-name tokens-lib %)
+                                                        ctob/get-id
+                                                        (vector owner))
+                                               (:sets theme))))))
+                       (reverse (ctob/get-themes tokens-lib)))]
+    (fn [set-id]
+      (or (get by-theme set-id)
+          (some-> (ctob/get-set tokens-lib set-id) ctob/get-name)))))
+
+(defn masked-group-tokens
+  "The tokens used below the roots that a theme of `group` defines, but
+  whose value comes from a set of another group whichever theme the
+  roots choose: a nearer context, or a set later in the list at the same
+  level. A map of token name to the names of those groups (see
+  `set-owners`)."
+  [tokens-status tokens-lib objects roots group]
+  (let [scoped-set-ids (cfo/make-scoped-set-ids tokens-status tokens-lib)
+        set-tokens     (into {}
+                             (map (fn [set] [(ctob/get-id set) (ctob/get-tokens- set)]))
+                             (ctob/get-sets tokens-lib))
+        owner          (set-owners tokens-lib)
+        theme-sets     (fn [theme-id]
+                         (into #{}
+                               (keep #(some-> (ctob/get-set-by-name tokens-lib %) ctob/get-id))
+                               (:sets (ctob/get-theme tokens-lib theme-id))))
+        themes         (vec (ctob/get-themes-in-group tokens-lib group))
+        ;; For one theme and chain, each name its sets define: who gives
+        ;; its value, `::own` when they do
+        winners        (fn [chain own names]
+                         (let [ids (vec (rseq (scoped-set-ids chain)))]
+                           (into {}
+                                 (keep (fn [name]
+                                         (when (some #(contains? (get set-tokens %) name) own)
+                                           (let [winner (d/seek #(contains? (get set-tokens %) name) ids)]
+                                             [name (if (contains? own winner) ::own (owner winner))]))))
+                                 names)))]
+    (->> (for [{:keys [id scope chain-above]} roots
+               [below names] (subtree-token-uses objects id)
+               theme-id themes
+               :let [own (theme-sets theme-id)]
+               :when (seq own)]
+           (winners (-> (vec chain-above)
+                        (conj (set-group-theme (or scope empty-scope) tokens-lib group theme-id))
+                        (into below))
+                    own names))
+         (map #(update-vals % hash-set))
+         (apply merge-with into {})
+         ;; Masked whichever theme is chosen, and wherever it is used
+         (into {} (remove (fn [[_ owners]] (contains? owners ::own)))))))
 
 (defn ineffective-theme-groups
   "The groups of `groups` whose choice on the roots changes no value of

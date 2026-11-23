@@ -7,6 +7,7 @@
 (ns frontend-tests.tokens.logic.token-scopes-test
   (:require
    [app.common.test-helpers.compositions :as ctho]
+   [app.common.test-helpers.files :as cthf]
    [app.common.test-helpers.ids-map :as cthi]
    [app.common.test-helpers.shapes :as cths]
    [app.common.test-helpers.tokens :as ctht]
@@ -145,3 +146,28 @@
            (let [file' (ths/get-file-from-state state)]
              (t/is (= #{"Device"} (get-in (cths/get-shape file' :board-copy) [:token-scope :overrides])))
              (t/is (= #{"Device"} (get-in (cths/get-shape file' :board-auto) [:token-scope :overrides]))))))))))
+
+(t/deftest test-masked-group-tokens
+  (t/testing "a group whose tokens another group defines later at the same level names that group"
+    (let [file    (-> (setup-file)
+                      (ctht/update-tokens-lib
+                       #(-> %
+                            (ctob/add-set (ctob/make-token-set :id (cthi/new-id! :set-modal) :name "modal"))
+                            (ctob/add-theme (ctob/make-token-theme :id (cthi/new-id! :modal-default)
+                                                                   :name "Default"
+                                                                   :group "Modal"
+                                                                   :sets #{"modal"}))
+                            (ctob/add-token (cthi/id :set-modal)
+                                            (ctob/make-token {:name "radius" :value "4" :type :border-radius})))))
+          lib     (ctht/get-tokens-lib file)
+          status  (ctht/get-tokens-status file)
+          objects (:objects (cthf/current-page file))
+          root    {:id (cthi/id :board-desktop)
+                   :scope {:themes #{(cthi/id :desktop) (cthi/id :modal-default)}}
+                   :chain-above []}]
+      (t/is (= {"radius" #{"Modal"}}
+               (dwts/masked-group-tokens status lib objects [root] "Platform")))
+      (t/is (= {} (dwts/masked-group-tokens status lib objects [root] "Modal")))
+      (t/is (= {} (dwts/masked-group-tokens status lib objects
+                                            [(update root :scope assoc :themes #{(cthi/id :desktop)})]
+                                            "Platform"))))))

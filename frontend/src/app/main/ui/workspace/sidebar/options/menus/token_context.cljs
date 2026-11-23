@@ -27,6 +27,7 @@
    [app.main.ui.hooks :as hooks]
    [app.util.i18n :refer [tr]]
    [app.util.keyboard :as kbd]
+   [clojure.string :as cstr]
    [rumext.v2 :as mf]))
 
 ;; Option ids of the selects. Theme ids are uuids, so they cannot collide.
@@ -83,7 +84,7 @@
 
 (mf/defc group-row*
   {::mf/private true}
-  [{:keys [tokens-lib group scopes inherited objects on-select is-ineffective]}]
+  [{:keys [tokens-lib group scopes inherited objects on-select effect]}]
   (let [themes   (dwts/group-themes tokens-lib group)
         chosen   (into #{} (map #(group-theme-id tokens-lib % group)) scopes)
         mixed?   (> (count chosen) 1)
@@ -104,6 +105,20 @@
                                      (:sets theme)))
                              themes)
 
+        is-ineffective (:ineffective? effect)
+        masked         (:masked effect)
+        ;; The groups giving the value of the tokens this one defines,
+        ;; and those tokens, for the hint of the label
+        masked-by      (when (seq masked)
+                         (cstr/join ", " (sort (into #{} cat (vals masked)))))
+        masked-names   (when (seq masked)
+                         (let [names (sort (keys masked))]
+                           (cond-> (cstr/join ", " (take 5 names))
+                             (> (count names) 5) (str ", …"))))
+        masked-hint    (when (seq masked)
+                         (tr "workspace.options.token-context.masked-hint"
+                             group masked-names masked-by))
+
         on-change
         (mf/use-fn
          (mf/deps group on-select)
@@ -116,17 +131,22 @@
                                   :row-label-ineffective (and is-ineffective (not no-tokens?)))
              :title (cond
                       no-tokens?     (tr "workspace.options.token-context.empty-group-hint" group)
+                      masked-hint    masked-hint
                       is-ineffective (tr "workspace.options.token-context.ineffective-hint" group)
                       :else          group)}
-      group
+      [:span {:class (stl/css :row-label-name)} group]
+      ;; Why the group changes nothing, or only some of its tokens, on
+      ;; hover of the label: no text, the select takes the room
       (cond
-        no-tokens?
-        [:span {:class (stl/css :row-label-empty)}
-         (tr "workspace.options.token-context.empty-group")]
+        (or no-tokens? is-ineffective)
+        [:> i/icon* {:icon-id i/help
+                     :size "s"
+                     :class (stl/css :row-label-icon)}]
 
-        is-ineffective
-        [:span {:class (stl/css :row-label-empty)}
-         (tr "workspace.options.token-context.ineffective")])]
+        masked-hint
+        [:> i/icon* {:icon-id i/info
+                     :size "s"
+                     :class (stl/css :row-label-icon)}])]
      [:div {:class (stl/css :row-select)}
       [:> select* {:key (str group "-" selected)
                    :default-selected selected
@@ -270,12 +290,13 @@
 
         displayed?    (and (seq groups) (= placement (if used? :top :bottom)))
 
-        ;; The listed groups whose choice changes nothing below: greyed.
-        ;; Resolving each theme of each group costs up to a few hundred
+        ;; What choosing each listed group does (see
+        ;; `dwts/theme-group-effect`): greyed when nothing, the groups
+        ;; winning over its tokens named. Resolving each theme of each group costs up to a few hundred
         ;; milliseconds, so it runs after the section is shown (only
         ;; where it is shown) instead of delaying the selection
-        ineffective*  (mf/use-state #{})
-        ineffective   (deref ineffective*)
+        effects*      (mf/use-state {})
+        effects       (deref effects*)
 
         ;; One group per timer, so no long freeze; a result already
         ;; computed for the same tokens and subtree comes from the cache
@@ -286,15 +307,14 @@
                                 step      (fn step [groups found]
                                             (when-not @cancelled
                                               (if-let [group (first groups)]
-                                                (let [found (cond-> found
-                                                              (dwts/ineffective-theme-group? tokens-status tokens-lib
-                                                                                             objects roots group)
-                                                              (conj group))]
+                                                (let [found (assoc found group
+                                                                   (dwts/theme-group-effect tokens-status tokens-lib
+                                                                                            objects roots group))]
                                                   (vreset! timer (js/setTimeout #(step (rest groups) found) 0)))
                                                 ;; Only a different result renders again
-                                                (when (not= found @ineffective*)
-                                                  (reset! ineffective* found)))))]
-                            (vreset! timer (js/setTimeout #(step shown #{}) 50))
+                                                (when (not= found @effects*)
+                                                  (reset! effects* found)))))]
+                            (vreset! timer (js/setTimeout #(step shown {}) 50))
                             #(do (vreset! cancelled true)
                                  (js/clearTimeout @timer)))))]
 
@@ -373,7 +393,7 @@
                           :scopes scopes
                           :inherited (when-not isolated? (get inherited group))
                           :objects objects
-                          :is-ineffective (contains? ineffective group)
+                          :effect (get effects group)
                           :on-select on-select}])]])))
 
 (mf/defc shapes-token-context*

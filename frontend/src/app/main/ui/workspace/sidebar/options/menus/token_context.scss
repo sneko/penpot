@@ -27,12 +27,22 @@
 
 .row-label {
   @include t.use-typography("body-small");
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xxs);
   grid-column: span 3;
-  align-self: center;
+  min-inline-size: 0;
+  color: var(--color-foreground-secondary);
+}
+
+.row-label-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--color-foreground-secondary);
+}
+
+.row-label-icon {
+  flex-shrink: 0;
 }
 
 .row-select {
@@ -43,12 +53,6 @@
 .hint {
   @include t.use-typography("body-small");
   color: var(--color-foreground-secondary);
-}
-
-.row-label-empty {
-  display: block;
-  color: var(--color-foreground-secondary);
-  opacity: 0.7;
 }
 
 .menu {
