@@ -1199,7 +1199,9 @@
        (when (seq ids-by-page)
          (->> (rx/from ids-by-page)
               (rx/map (fn [[page-id ids]]
-                        (dwtp/propagate-workspace-tokens {:page-id page-id :root-ids ids})))))))
+                        ;; Undone with the sync
+                        (dwtp/propagate-workspace-tokens {:page-id page-id :root-ids ids}
+                                                         {:undo-group undo-group})))))))
    (when-not (empty? updated-frames)
      (let [frames-by-page (group-by :page-id updated-frames)]
        (rx/merge

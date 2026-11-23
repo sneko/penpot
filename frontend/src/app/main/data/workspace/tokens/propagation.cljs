@@ -254,14 +254,30 @@
             (let [elapsed (tpoint)]
               (l/inf :status "END" :hint "propagate-tokens" :elapsed elapsed)))))))
 
+(defn- set-buffer-undo-group
+  "Gives the changes buffered by `update-shapes` `undo-group`, before they
+  are committed: undone with the other changes of that group, and seen
+  as part of them by the component sync, which does not start again."
+  [undo-group]
+  (ptk/reify ::set-buffer-undo-group
+    ptk/UpdateEvent
+    (update [_ state]
+      (update state ::dwsh/update-shapes-buffer-changes
+              (fn [by-page]
+                (update-vals by-page #(pcb/set-undo-group % undo-group)))))))
+
 (defn propagate-workspace-tokens
   "Apply the resolved values of the active tokens to the shapes that use
   them. Without `scope` it covers every page of the file. A `scope` of
   `:page-id` and `:root-ids` limits it to those shapes and their
-  descendants, or to that page when `:root-ids` is nil."
+  descendants, or to that page when `:root-ids` is nil. An `undo-group`
+  makes the propagation undone with the changes of that group (those it
+  follows), and keeps the component sync from starting again for it."
   ([]
    (propagate-workspace-tokens nil))
   ([scope]
+   (propagate-workspace-tokens scope nil))
+  ([scope {:keys [undo-group]}]
    (ptk/reify ::propagate-workspace-tokens
      ptk/WatchEvent
      (watch [_ state _]
@@ -286,6 +302,9 @@
                            (rx/catch #(rx/concat
                                        (rx/of (dwsh/update-shapes-buffer-stop))
                                        (rx/throw %))))
+                      (if undo-group
+                        (rx/of (set-buffer-undo-group undo-group))
+                        (rx/empty))
                       (rx/of (dwsh/update-shapes-buffer-stop))
                       (rx/of (dwu/commit-undo-transaction undo-id)))))))))))))
 
@@ -317,7 +336,12 @@
                          texts? (some #(and (cfh/text-shape? %) (seq (:applied-tokens %)))
                                       (vals (dsh/lookup-page-objects state)))]
                      (rx/concat
-                      (or (ptk/watch (propagate-workspace-tokens scope) state stream)
+                      ;; In the group of `event`, the first change of the
+                      ;; transaction
+                      (or (ptk/watch (propagate-workspace-tokens
+                                      scope
+                                      {:undo-group (get-in state [:workspace-undo :transaction :undo-group])})
+                                     state stream)
                           (rx/empty))
                       (if texts?
                         (->> (rx/merge
