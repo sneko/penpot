@@ -1,0 +1,94 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) KALEIDOS SUBSIDIARY SL
+
+@use "ds/typography.scss" as t;
+@use "ds/_sizes.scss" as *;
+@use "../../../sidebar/common/sidebar.scss" as sidebar;
+@use "refactor/common-refactor.scss" as deprecated;
+
+.element-set {
+  position: relative;
+  max-width: var(--options-width);
+}
+
+.element-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  margin-block-end: var(--sp-s);
+}
+
+.row {
+  @include sidebar.option-grid-structure;
+}
+
+.row-label {
+  @include t.use-typography("body-small");
+  grid-column: span 3;
+  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-foreground-secondary);
+}
+
+.row-select {
+  grid-column: span 5;
+  align-self: center;
+}
+
+.hint {
+  @include t.use-typography("body-small");
+  color: var(--color-foreground-secondary);
+}
+
+.row-label-empty {
+  display: block;
+  color: var(--color-foreground-secondary);
+  opacity: 0.7;
+}
+
+.menu {
+  @extend %dropdown-wrapper;
+
+  inset-inline-end: 0;
+  inset-block-start: $sz-32;
+  inline-size: max-content;
+  min-inline-size: 160px;
+  max-block-size: 320px;
+  overflow-y: auto;
+}
+
+.menu-item {
+  @extend %dropdown-element-base;
+
+  justify-content: space-between;
+}
+
+.menu-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-check {
+  flex-shrink: 0;
+  visibility: hidden;
+}
+
+.menu-check-visible {
+  visibility: visible;
+}
+
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xxs);
+}
+
+.row-label-ineffective {
+  opacity: 0.6;
+}

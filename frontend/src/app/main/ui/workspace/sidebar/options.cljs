@@ -31,6 +31,7 @@
    [app.main.ui.workspace.sidebar.options.menus.grid-cell :as grid-cell]
    [app.main.ui.workspace.sidebar.options.menus.interactions :refer [interactions-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.layout-container :as layout-container]
+   [app.main.ui.workspace.sidebar.options.menus.token-context :refer [page-token-context-menu* shapes-token-context-menu*]]
    [app.main.ui.workspace.sidebar.options.page :as page]
    [app.main.ui.workspace.sidebar.options.shapes.bool :as bool]
    [app.main.ui.workspace.sidebar.options.shapes.circle :as circle]
@@ -80,19 +81,25 @@
   {::mf/wrap [#(mf/throttle % 200)]
    ::mf/private true}
   [{:keys [shapes shapes-with-children selected page-id file-id libraries]}]
-  (if (= 1 (count selected))
-    [:> single-shape-options*
-     {:page-id page-id
-      :file-id file-id
-      :libraries libraries
-      :shape (first shapes)
-      :shapes-with-children shapes-with-children}]
-    [:> multiple/options*
-     {:shapes-with-children shapes-with-children
-      :shapes shapes
-      :page-id page-id
-      :file-id file-id
-      :libraries libraries}]))
+  [:*
+   (if (= 1 (count selected))
+     [:> single-shape-options*
+      {:page-id page-id
+       :file-id file-id
+       :libraries libraries
+       :shape (first shapes)
+       :shapes-with-children shapes-with-children}]
+     [:> multiple/options*
+      {:shapes-with-children shapes-with-children
+       :shapes shapes
+       :page-id page-id
+       :file-id file-id
+       :libraries libraries}])
+   ;; The token context section renders below the measures (see the
+   ;; options of each type of shape), or here at the bottom, out of the
+   ;; way, when the selection uses no context. Throttled with them, so
+   ;; the two places never show two selections
+   [:> shapes-token-context-menu* {:shapes shapes :placement :bottom}]])
 
 (mf/defc specialized-panel*
   {::mf/private true}
@@ -211,7 +218,11 @@
         {:drawing-state drawing}]
 
        (zero? total-selected)
-       [:> page/options*]
+       [:*
+        [:> page-token-context-menu* {:placement :top}]
+        [:> page/options*]
+        ;; Out of the way when the page has no context
+        [:> page-token-context-menu* {:placement :bottom}]]
 
        :else
        [:> shape-options*

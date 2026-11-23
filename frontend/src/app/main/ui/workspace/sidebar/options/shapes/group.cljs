@@ -25,6 +25,7 @@
    [app.main.ui.workspace.sidebar.options.menus.stroke :refer [stroke-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.svg-attrs :refer [svg-attrs-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.text :as ot]
+   [app.main.ui.workspace.sidebar.options.menus.token-context :refer [shapes-token-context-menu*]]
    [app.main.ui.workspace.sidebar.options.shapes.multiple :refer [get-attrs]]
    [rumext.v2 :as mf]))
 
@@ -139,6 +140,9 @@
                          :applied-tokens applied-tokens
                          :values measure-values
                          :shapes shapes}]
+
+     ;; Below the measures, when the selection uses token contexts
+     [:> shapes-token-context-menu* {:shapes shapes :placement :top}]
 
      [:> layout-container-menu*
       {:type type

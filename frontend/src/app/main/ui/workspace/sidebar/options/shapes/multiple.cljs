@@ -34,6 +34,7 @@
    [app.main.ui.workspace.sidebar.options.menus.shadow :refer [shadow-attrs shadow-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.stroke :refer [stroke-attrs stroke-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.text :as ot]
+   [app.main.ui.workspace.sidebar.options.menus.token-context :refer [shapes-token-context-menu*]]
    [rumext.v2 :as mf]))
 
 ;; Define how to read each kind of attribute depending on the shape type:
@@ -564,6 +565,9 @@
          :values measure-values
          :applied-tokens measure-tokens
          :shapes shapes}])
+
+     ;; Below the measures, when the selection uses token contexts
+     [:> shapes-token-context-menu* {:shapes shapes :placement :top}]
 
      (when (some? components)
        [:> component-menu* {:shapes components}])

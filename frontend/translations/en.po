@@ -8763,6 +8763,18 @@ msgstr "Comments hidden"
 msgid "workspace.toast.comments-visible"
 msgstr "Comments visible"
 
+#: src/app/main/ui/workspace/viewport/token_scopes.cljs
+msgid "workspace.token-scope-area.isolated"
+msgstr "%s (isolated)"
+
+#: src/app/main/ui/workspace/viewport/token_scopes.cljs
+msgid "workspace.token-scope-area.no-themes"
+msgstr "No themes"
+
+#: src/app/main/ui/workspace/viewport/token_scopes.cljs
+msgid "workspace.token-scope-area.remove"
+msgstr "Remove all context overrides"
+
 #: src/app/main/ui/workspace/tokens/themes/theme_selector.cljs:112
 msgid "workspace.tokens.active-themes"
 msgstr "%s active themes"
@@ -9654,18 +9666,6 @@ msgstr ""
 msgid "workspace.versions.warning.text"
 msgstr "Autosaved versions will be kept for %s days."
 
-#: src/app/main/ui/workspace/viewport/token_scopes.cljs
-msgid "workspace.token-scope-area.isolated"
-msgstr "%s (isolated)"
-
-#: src/app/main/ui/workspace/viewport/token_scopes.cljs
-msgid "workspace.token-scope-area.no-themes"
-msgstr "No themes"
-
-#: src/app/main/ui/workspace/viewport/token_scopes.cljs
-msgid "workspace.token-scope-area.remove"
-msgstr "Remove all context overrides"
-
 #: src/app/main/ui/workspace/context_menu.cljs
 msgid "workspace.shape.menu.add-token-context"
 msgstr "Add token context"
@@ -9681,6 +9681,99 @@ msgstr "Token context"
 #: src/app/main/ui/workspace/context_menu.cljs
 msgid "workspace.shape.menu.token-context.new"
 msgstr "New context"
+
+#: src/app/main/ui/workspace/context_menu.cljs
+msgid "workspace.shape.menu.token-context.auto"
+msgstr "Auto (inherited)"
+
+#: src/app/main/ui/workspace/context_menu.cljs
+msgid "workspace.shape.menu.token-context.other-groups"
+msgstr "Other groups"
+
+#: src/app/main/ui/workspace/context_menu.cljs
+msgid "workspace.shape.menu.token-context.no-themes"
+msgstr "No themes in this file"
+
+#: src/app/main/ui/workspace/context_menu.cljs
+msgid "workspace.shape.menu.token-context.no-relevant-groups"
+msgstr "No group changes the tokens used here"
+
+#: src/app/main/ui/workspace/context_menu.cljs
+msgid "workspace.shape.menu.token-context.isolated"
+msgstr "Ignore the contexts above"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.title"
+msgstr "Token context"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.auto"
+msgstr "Not set"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.auto-inherited"
+msgstr "Inherited · %s (%s)"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.origin-file"
+msgstr "file"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.origin-page"
+msgstr "page"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.mixed"
+msgstr "Mixed"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.remove"
+msgstr "Remove token context"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.add-group"
+msgstr "Add a theme group (%s available)"
+
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.empty-group"
+msgstr "no tokens"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.empty-group-hint"
+msgstr "%s: its sets define no token, so choosing a theme changes nothing"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.ineffective"
+msgstr "no effect here"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.ineffective-hint"
+msgstr "%s: none of its themes changes the tokens used here, with the contexts set above and below"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.isolated-hint"
+msgstr "Isolated: does not inherit the contexts of the page and the containers above, groups not chosen here are not set"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.inherit"
+msgstr "Inherit the contexts above"
+
+#: src/app/main/ui/workspace/sidebar/options/menus/token_context.cljs
+msgid "workspace.options.token-context.options"
+msgstr "Token context options"
+
+#: src/app/main/ui/workspace/tokens/sets.cljs
+msgid "workspace.tokens.contexts.banner"
+msgstr "Read-only: sets of the context of %s (Design › Token context)"
+
+#: src/app/main/ui/workspace/tokens/sets.cljs
+msgid "workspace.tokens.contexts.banner-page"
+msgstr "this page"
+
+#: src/app/main/ui/workspace/tokens/sets.cljs
+msgid "workspace.tokens.contexts.banner-deselect"
+msgstr "Deselect to edit the file’s sets"
 
 #: src/app/main/ui/workspace/tokens/sets/lists.cljs
 msgid "workspace.tokens.contexts.sets-disabled"

@@ -21,6 +21,7 @@
    [app.main.ui.workspace.sidebar.options.menus.shadow :refer [shadow-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.stroke :refer [stroke-attrs stroke-menu*]]
    [app.main.ui.workspace.sidebar.options.menus.svg-attrs :refer [svg-attrs-menu*]]
+   [app.main.ui.workspace.sidebar.options.menus.token-context :refer [shapes-token-context-menu*]]
    [rumext.v2 :as mf]))
 
 (mf/defc options*
@@ -92,6 +93,9 @@
                          :type type
                          :values measure-values
                          :shapes shapes}]
+
+     ;; Below the measures, when the selection uses token contexts
+     [:> shapes-token-context-menu* {:shapes shapes :placement :top}]
 
      [:> layout-container-menu*
       {:type type
