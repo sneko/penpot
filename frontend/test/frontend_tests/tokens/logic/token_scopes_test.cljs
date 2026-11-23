@@ -94,14 +94,16 @@
            (t/is (= 8 (radius state :rect-desktop)))))))))
 
 (t/deftest test-set-shape-token-scope
-  (t/testing "scoping a board re-resolves its shapes"
+  (t/testing "scoping a board re-resolves its shapes, and only them"
     (t/async
       done
       (let [file  (setup-file)
             store (ths/setup-store file)
             board (cths/get-shape file :board-mobile)]
         (tohs/run-store-async
-         store done [(dwts/set-shape-token-scope (:id board) {:themes #{(cthi/id :desktop)}})]
+         ;; The whole file first: scoping a board propagates its subtree
+         store done [(dwtp/propagate-workspace-tokens)
+                     (dwts/set-shape-token-scope (:id board) {:themes #{(cthi/id :desktop)}})]
          (fn [state]
            (let [board' (cths/get-shape (ths/get-file-from-state state) :board-mobile)]
              (t/is (= {:themes #{(cthi/id :desktop)}} (:token-scope board')))

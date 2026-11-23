@@ -774,14 +774,6 @@
           (d/ordered-map)
           set-ids))
 
-(defn file-scope
-  "A scope with the file's active themes, for a scope that starts as the
-   file's context and changes on its own from then on."
-  [tokens-status tokens-lib]
-  {:themes (into #{}
-                 (comp (remove ctob/hidden-theme?) (map :id))
-                 (get-active-themes tokens-status tokens-lib))})
-
 (defn scope-chain
   "The scopes a shape resolves tokens under, outermost first: the page's,
    then those of the shape's ancestors down to the shape itself. Each

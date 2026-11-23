@@ -1906,19 +1906,6 @@
            (cfo/scope-chain-key [{:themes #{} :origin :page :overrides #{"Mode"}}
                                  {:themes #{} :mode :isolated :origin (uuid/next)}]))))
 
-(t/deftest test-file-scope
-  (let [tokens-lib (scoped-tokens-lib)]
-    (t/testing "a scope with the file's active themes"
-      (t/is (= {:themes #{(thi/id :mobile) (thi/id :light)}}
-               (cfo/file-scope (mobile-light-status) tokens-lib))))
-
-    (t/testing "without the hidden theme of manually activated sets"
-      (let [tokens-lib (ctob/add-theme tokens-lib (ctob/make-hidden-theme))
-            status     (ctos/make-tokens-status :active-theme-ids #{ctob/hidden-theme-id (thi/id :light)}
-                                                :active-set-ids #{(thi/id :set-light)})]
-        (t/is (= {:themes #{(thi/id :light)}}
-                 (cfo/file-scope status tokens-lib)))))))
-
 (t/deftest test-scope-chain
   (let [page-scope  {:themes #{(uuid/next)}}
         frame-scope {:themes #{(uuid/next)} :mode :isolated}

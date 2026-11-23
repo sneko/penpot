@@ -48,6 +48,7 @@
    [app.main.data.workspace.thumbnails :as dwt]
    [app.main.data.workspace.thumbnails-wasm :as dwt.wasm]
    [app.main.data.workspace.tokens.propagation :as dwtp]
+   [app.main.data.workspace.tokens.scoped-resolution :as dwtsr]
    [app.main.data.workspace.transforms :as dwtr]
    [app.main.data.workspace.undo :as dwu]
    [app.main.data.workspace.wasm-text :as dwwt]
@@ -657,7 +658,8 @@
                      (merge (meta it))))
                 (dwu/start-undo-transaction undo-id)
                 (dch/commit-changes changes)
-                ;; Make the new instance get the token values from the current file, not from the component's library
+                ;; Make the new instance get the token values from the current file, not from the component's library:
+                ;; only the new instance, the rest of the file is unchanged
                 (dwtp/propagate-workspace-tokens {:page-id (:id page) :root-ids [(:id new-shape)]})
                 (ptk/data-event :layout/update {:ids [(:id new-shape)]})
                 (dws/select-shapes (d/ordered-set (:id new-shape)))
@@ -1116,7 +1118,8 @@
         (rx/of
          (dwu/start-undo-transaction undo-id)
          (dch/commit-changes changes)
-         ;; Make the new instance get the token values from the current file, not from the component's library
+         ;; Make the new instance get the token values from the current file, not from the component's library: only
+         ;; the swapped instance, the rest of the file is unchanged
          (dwtp/propagate-workspace-tokens {:page-id (:id page) :root-ids [(:id new-shape)]})
          (when (and (features/active-feature? state "render-wasm/v1")
                     (seq new-text-ids))
@@ -1171,6 +1174,16 @@
         (assoc state :updating-library true)
         (dissoc state :updating-library)))))
 
+(defn- synced-ids-by-page
+  "The ids of the shapes `changes` modify or add, by page."
+  [changes]
+  (reduce (fn [acc {:keys [type page-id id]}]
+            (if (and (contains? #{:mod-obj :add-obj} type) page-id id)
+              (update acc page-id (fnil conj #{}) id)
+              acc))
+          {}
+          (:redo-changes changes)))
+
 (defn- sync-file-frontend-events
   [file-id changes updated-frames undo-group]
   (rx/concat
@@ -1178,6 +1191,15 @@
           (ntf/hide {:tag :sync-dialog}))
    (when (seq (:redo-changes changes))
      (rx/of (dch/commit-changes changes)))
+   ;; A sync copies the values of the main to its copies, resolved with
+   ;; the token contexts of the main: resolve them again with the
+   ;; contexts of each copy
+   (when (dwtsr/enabled?)
+     (let [ids-by-page (synced-ids-by-page changes)]
+       (when (seq ids-by-page)
+         (->> (rx/from ids-by-page)
+              (rx/map (fn [[page-id ids]]
+                        (dwtp/propagate-workspace-tokens {:page-id page-id :root-ids ids})))))))
    (when-not (empty? updated-frames)
      (let [frames-by-page (group-by :page-id updated-frames)]
        (rx/merge

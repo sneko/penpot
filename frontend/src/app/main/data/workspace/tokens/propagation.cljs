@@ -12,7 +12,6 @@
    [app.common.logging :as l]
    [app.common.time :as ct]
    [app.common.types.token :as ctt]
-   [app.common.types.tokens-status :as ctos]
    [app.config :as cf]
    [app.main.data.changes :as dch]
    [app.main.data.helpers :as dsh]
@@ -21,6 +20,7 @@
    [app.main.data.workspace.shapes :as dwsh]
    [app.main.data.workspace.thumbnails :as dwt]
    [app.main.data.workspace.tokens.application :as dwta]
+   [app.main.data.workspace.tokens.scoped-resolution :as dwtsr]
    [app.main.data.workspace.undo :as dwu]
    [beicon.v2.core :as rx]
    [clojure.data :as data]
@@ -121,9 +121,10 @@
          tokens {}]
     (if-let [[shape-id {:keys [applied-tokens] :as shape}] (first items)]
       (let [applied-tokens
-            (-> (invert-collect-key-vals applied-tokens (resolve-for-shape shape-id) shape)
-                (shape-ids-by-values shape-id)
-                (split-attribute-groups))
+            (when (seq applied-tokens)
+              (-> (invert-collect-key-vals applied-tokens (resolve-for-shape shape-id) shape)
+                  (shape-ids-by-values shape-id)
+                  (split-attribute-groups)))
 
             parent-frame-id
             (cfh/get-shape-id-root-frame objects shape-id)]
@@ -167,50 +168,30 @@
                       (pcb/with-page page)
                       (pcb/mod-page {:background color})))))))))
 
-(defn- scoped-resolver
-  "A fn from a shape id of `page` (nil for the page itself) to the
-  resolved tokens its token scopes give (see `cfo/scope-chain`):
-  `resolved-tokens` when no scope applies, else the tokens of the chain's
-  effective status, resolved once per distinct combination of active
-  sets. Without the flag every shape gets `resolved-tokens`."
-  [state resolved-tokens page]
-  (if (and (contains? cf/flags :token-scoped-themes)
-           (contains? cf/flags :tokenscript))
-    (let [tokens-lib    (dsh/lookup-tokens-lib state)
-          tokens-status (dsh/lookup-tokens-status state)
-          objects       (:objects page)
-          cache         (volatile! {(ctos/get-active-set-ids tokens-status) resolved-tokens})]
-      (fn [shape-id]
-        (let [chain (cfo/scope-chain page objects shape-id)]
-          (if (empty? chain)
-            resolved-tokens
-            (let [status  (cfo/effective-tokens-status tokens-status tokens-lib chain)
-                  set-ids (ctos/get-active-set-ids status)]
-              (or (get @cache set-ids)
-                  (let [resolved (ts/resolve-sets (cfo/get-active-token-sets status tokens-lib))]
-                    (vswap! cache assoc set-ids resolved)
-                    resolved)))))))
-    (constantly resolved-tokens)))
-
 (defn- scoped-shapes
   "Entries of `objects` for the shapes in `root-ids` and all their descendants."
   [objects root-ids]
-  (into []
-        (comp (mapcat #(cfh/get-children-ids-with-self objects %))
-              (distinct)
-              (keep (fn [id]
-                      (when-let [shape (get objects id)]
-                        [id shape]))))
-        root-ids))
+  (let [roots (set root-ids)]
+    (into []
+          (comp ;; The subtree of a root inside another one is already there
+           (remove (fn [id] (some roots (cfh/get-parent-ids objects id))))
+           (mapcat #(cfh/get-children-ids-with-self objects %))
+           (keep (fn [id]
+                   (when-let [shape (get objects id)]
+                     [id shape]))))
+          roots)))
 
 (defn propagate-tokens
   "Propagate tokens values to all shapes and page backgrounds where they
   are applied. A non-nil `scope` of `:page-id` and `:root-ids` limits it
-  to those shapes and their descendants in that page."
+  to those shapes and their descendants in that page, or to that whole
+  page (its background included) when `:root-ids` is nil."
   [state resolved-tokens {scope-page-id :page-id root-ids :root-ids :as scope}]
   (let [file-id         (get state :current-file-id)
         current-page-id (get state :current-page-id)
         fdata           (dsh/lookup-file-data state file-id)
+        tokens-lib      (dsh/lookup-tokens-lib state)
+        tokens-status   (dsh/lookup-tokens-status state)
         scoped?         (some? scope)
         tpoint          (ct/tpoint-ms)]
 
@@ -230,12 +211,12 @@
                   (:objects page)
 
                   resolve-for-shape
-                  (scoped-resolver state resolved-tokens page)
+                  (dwtsr/make-resolver tokens-status tokens-lib resolved-tokens page)
 
                   [attrs frame-ids text-ids]
                   (collect-shapes-update-info resolve-for-shape
                                               objects
-                                              (if scoped?
+                                              (if (some? root-ids)
                                                 (scoped-shapes objects root-ids)
                                                 objects))
 
@@ -255,7 +236,7 @@
                (when (seq observable) (apply rx/merge observable))
                (when (seq normal) (rx/concat-all (rx/of normal)))
 
-               (when (and (not scoped?) (:background-token page))
+               (when (and (nil? root-ids) (:background-token page))
                  (rx/of (update-canvas-background page-id (resolve-for-shape nil))))
 
                (->> (rx/from frame-ids)
@@ -277,7 +258,7 @@
   "Apply the resolved values of the active tokens to the shapes that use
   them. Without `scope` it covers every page of the file. A `scope` of
   `:page-id` and `:root-ids` limits it to those shapes and their
-  descendants."
+  descendants, or to that page when `:root-ids` is nil."
   ([]
    (propagate-workspace-tokens nil))
   ([scope]
