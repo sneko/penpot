@@ -72,6 +72,24 @@
   justify-content: space-between;
 }
 
+.menu-item-open {
+  background-color: var(--menu-background-color-hover);
+}
+
+// The themes of a group of the add menu, on its left: the sidebar is on
+// the right of the window
+.submenu {
+  @extend %dropdown-wrapper;
+
+  position: fixed;
+  inset-inline-start: auto;
+  margin-block-start: 0;
+  inline-size: max-content;
+  min-inline-size: 120px;
+  max-block-size: 320px;
+  overflow-y: auto;
+}
+
 .menu-item-label {
   overflow: hidden;
   text-overflow: ellipsis;

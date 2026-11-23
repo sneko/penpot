@@ -194,6 +194,10 @@
         ;; :add or :options, the dropdown open from the title bar
         menu*         (mf/use-state nil)
         menu          (deref menu*)
+        ;; The group of the add menu whose themes are shown, and where:
+        ;; fixed, as the menu scrolls and would clip it
+        submenu*      (mf/use-state nil)
+        submenu       (deref submenu*)
 
         groups
         (mf/with-memo [tokens-lib]
@@ -278,7 +282,8 @@
            (reset! menu* nil)
            (on-remove)))
 
-        on-close-menu (mf/use-fn #(reset! menu* nil))
+        on-close-menu (mf/use-fn #(do (reset! menu* nil)
+                                      (reset! submenu* nil)))
 
         on-open-add
         (mf/use-fn #(swap! menu* (fn [m] (when-not (= m :add) :add))))
@@ -346,16 +351,46 @@
          [:& dropdown {:show true :on-close on-close-menu}
           [:ul {:class (stl/css :menu) :role "menu"}
            (for [group other-groups]
-             (let [on-add (fn []
-                            (reset! menu* nil)
-                            (add-group! group))]
+             (let [;; Added on Auto, to choose its theme in its row
+                   on-add  (fn []
+                             (on-close-menu)
+                             (add-group! group))
+                   ;; Its themes beside it, to add it with one directly
+                   on-open (fn [event]
+                             (let [rect (.getBoundingClientRect (.-currentTarget event))]
+                               (reset! submenu* {:group group
+                                                 :top (.-top rect)
+                                                 :right (- (.-innerWidth js/window) (.-left rect))})))]
                [:li {:key group
-                     :class (stl/css :menu-item)
+                     :class (stl/css-case :menu-item true
+                                          :menu-item-open (= group (:group submenu)))
                      :role "menuitem"
+                     :aria-haspopup "menu"
+                     :aria-expanded (= group (:group submenu))
                      :tab-index 0
                      :on-click on-add
+                     :on-mouse-enter on-open
+                     :on-focus on-open
                      :on-key-down (on-menu-key-down on-add)}
-                [:span {:class (stl/css :menu-item-label)} group]]))]])
+                [:span {:class (stl/css :menu-item-label)} group]
+                [:> i/icon* {:icon-id i/arrow-left :size "s"}]]))]
+          (when-let [{:keys [group top right]} submenu]
+            [:ul {:class (stl/css :submenu)
+                  :role "menu"
+                  :aria-label group
+                  :style {:top top :right right}}
+             (for [theme (dwts/group-themes tokens-lib group)]
+               (let [on-choose (fn []
+                                 (on-close-menu)
+                                 (add-group! group)
+                                 (on-select group (:id theme)))]
+                 [:li {:key (str (:id theme))
+                       :class (stl/css :menu-item)
+                       :role "menuitem"
+                       :tab-index 0
+                       :on-click on-choose
+                       :on-key-down (on-menu-key-down on-choose)}
+                  [:span {:class (stl/css :menu-item-label)} (:name theme)]]))])])
 
        (when (= menu :options)
          [:& dropdown {:show true :on-close on-close-menu}
