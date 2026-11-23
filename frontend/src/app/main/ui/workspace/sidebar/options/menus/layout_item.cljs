@@ -534,6 +534,10 @@
    [:applied-tokens [:maybe [:map-of :keyword :string]]]
    [:ids [::sm/vec ::sm/uuid]]])
 
+;; The sizings that take min and max sizes: a fill item is clamped by its
+;; parent layout, a board fitting its content by its own layout
+(def ^:private constrained-sizing? #{:fill :auto})
+
 (mf/defc layout-size-constraints*
   {::mf/private true
    ::mf/schema (sm/schema schema:layout-size-constraints)}
@@ -591,7 +595,7 @@
 
     [:section {:class (stl/css :advanced-options)
                :aria-label "Layout item size constraints"}
-     (when (= (:layout-item-h-sizing values) :fill)
+     (when (constrained-sizing? (:layout-item-h-sizing values))
        [:div {:class (stl/css :horizontal-fill)}
         (if token-numeric-inputs
           [:> numeric-input-wrapper*
@@ -651,7 +655,7 @@
              :value (get values :layout-item-max-w)
              :is-nillable true}]])])
 
-     (when (= v-sizing :fill)
+     (when (constrained-sizing? v-sizing)
        [:div {:class (stl/css :vertical-fill)}
         (if token-numeric-inputs
           [:> numeric-input-wrapper*
@@ -943,8 +947,8 @@
                                :ids ids
                                :on-change on-margin-change}])
 
-        (when (or (= h-sizing :fill)
-                  (= v-sizing :fill))
+        (when (or (constrained-sizing? h-sizing)
+                  (constrained-sizing? v-sizing))
           [:> layout-size-constraints* {:ids ids
                                         :values values
                                         :applied-tokens applied-tokens}])])]))
