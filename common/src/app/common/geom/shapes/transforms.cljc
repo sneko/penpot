@@ -410,10 +410,11 @@
   (let [;; Points for every shape inside the group
         points (->> children (mapcat :points))
 
-        shape-center (gco/points->center points)
-
         ;; Fixed problem with empty groups. Should not happen (but it does)
+        ;; Note: before the center, which cannot be computed without points
         points (if (empty? points) (:points group) points)
+
+        shape-center (gco/points->center points)
 
         ;; Invert to get the points minus the transforms applied to the group
         base-points (gco/transform-points points shape-center (:transform-inverse group (gmt/matrix)))

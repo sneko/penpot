@@ -271,3 +271,14 @@
       (t/is (true? (:flip-y result)))
       ;; rotation must not be negated when both axes are flipped
       (t/is (mth/close? 30 (:rotation result))))))
+
+(t/deftest update-group-selrect-of-an-empty-group
+  (t/testing "A group without children keeps its own geometry"
+    ;; Its center cannot come from the points of its (missing) children
+    (let [group  (create-test-shape :group {:x 10 :y 20 :width 30 :height 40})
+          result (gsh/update-group-selrect group [])]
+      (t/is (some? (:selrect result)))
+      (t/is (mth/close? 10 (get-in result [:selrect :x])))
+      (t/is (mth/close? 20 (get-in result [:selrect :y])))
+      (t/is (mth/close? 30 (get-in result [:selrect :width])))
+      (t/is (mth/close? 40 (get-in result [:selrect :height]))))))
