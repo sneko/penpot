@@ -170,3 +170,25 @@
     color: var(--layer-row-foreground-color-placeholder);
   }
 }
+
+.context-banner {
+  display: flex;
+  flex-direction: column;
+  gap: deprecated.$s-4;
+  // Aligned on the theme selector above (`.themes-wrapper`)
+  margin-block: var(--sp-xs);
+  margin-inline: var(--sp-m) var(--sp-s);
+  padding: var(--sp-s);
+  border-radius: deprecated.$br-8;
+  background-color: var(--color-background-tertiary);
+}
+
+.context-banner-text {
+  @include use-typography("body-small");
+  margin: 0;
+  color: var(--color-foreground-secondary);
+}
+
+.context-banner-button {
+  align-self: flex-start;
+}

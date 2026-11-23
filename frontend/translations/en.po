@@ -9761,7 +9761,7 @@ msgstr "Token context options"
 
 #: src/app/main/ui/workspace/tokens/sets.cljs
 msgid "workspace.tokens.contexts.banner"
-msgstr "Read-only: sets of the context of %s (Design › Token context)"
+msgstr "Read-only: sets active in the token context of %s (Design › Token context)"
 
 #: src/app/main/ui/workspace/tokens/sets.cljs
 msgid "workspace.tokens.contexts.banner-page"

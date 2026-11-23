@@ -147,8 +147,7 @@
   color: var(--color-foreground-secondary);
 }
 
-// A set active in the token scope of the selection (see the canvas
-// outlines of `viewport/token_scopes`).
+// A set active in the token scope of the selection.
 .in-context {
   --in-context-background: color-mix(
     in srgb,

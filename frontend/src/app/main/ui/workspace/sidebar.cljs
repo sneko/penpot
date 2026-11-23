@@ -382,19 +382,48 @@
             (cfo/effective-tokens-status file-tokens-status tokens-lib scope-chain)
             file-tokens-status))
 
+        ;; In a token context, the sets in merge order: the nearest
+        ;; context wins a token name two groups define
+        scoped-set-ids
+        (mf/with-memo [file-tokens-status tokens-lib scope-chain]
+          (when (and (seq scope-chain) file-tokens-status tokens-lib)
+            (cfo/scoped-set-ids file-tokens-status tokens-lib scope-chain)))
+
         active-tokens
-        (mf/with-memo [tokens-status tokens-lib]
-          (if (and tokens-status tokens-lib)
+        (mf/with-memo [tokens-status tokens-lib scoped-set-ids]
+          (cond
+            (and scoped-set-ids tokens-lib)
+            (cfo/get-tokens-in-sets tokens-lib scoped-set-ids)
+
+            (and tokens-status tokens-lib)
             (cfo/get-tokens-in-active-sets tokens-status tokens-lib)
+
+            :else
             {}))
 
         selected-token-set-id
         (mf/deref refs/selected-token-set-id)
 
+        ;; The set being edited comes first when it is not active, with
+        ;; the lowest precedence
+        scoped-set-ids-force-set
+        (mf/with-memo [scoped-set-ids selected-token-set-id]
+          (when scoped-set-ids
+            (if (and selected-token-set-id
+                     (not (some #(= selected-token-set-id %) scoped-set-ids)))
+              (into [selected-token-set-id] scoped-set-ids)
+              scoped-set-ids)))
+
         active-tokens-force-set
-        (mf/with-memo [tokens-status tokens-lib selected-token-set-id]
-          (if (and tokens-status tokens-lib selected-token-set-id)
+        (mf/with-memo [tokens-status tokens-lib selected-token-set-id scoped-set-ids-force-set]
+          (cond
+            (and scoped-set-ids-force-set tokens-lib)
+            (cfo/get-tokens-in-sets tokens-lib scoped-set-ids-force-set)
+
+            (and tokens-status tokens-lib selected-token-set-id)
             (cfo/get-tokens-in-active-sets-force tokens-status tokens-lib selected-token-set-id)
+
+            :else
             {}))
 
         tokenscript? (contains? cf/flags :tokenscript)
@@ -404,17 +433,29 @@
 
         ;; Tokenscript takes the sets unmerged and resolves what changed
         tokenscript-resolved-active-tokens
-        (mf/with-memo [tokens-status tokens-lib tokenscript?]
+        (mf/with-memo [tokens-status tokens-lib scoped-set-ids tokenscript?]
           (when tokenscript?
-            (if (and tokens-status tokens-lib)
+            (cond
+              (and scoped-set-ids tokens-lib)
+              (ts/resolve-sets (cfo/get-token-sets-in-order tokens-lib scoped-set-ids))
+
+              (and tokens-status tokens-lib)
               (ts/resolve-sets (cfo/get-active-token-sets tokens-status tokens-lib))
+
+              :else
               {})))
 
         tokenscript-resolved-active-tokens-force-set
-        (mf/with-memo [tokens-status tokens-lib selected-token-set-id tokenscript?]
+        (mf/with-memo [tokens-status tokens-lib selected-token-set-id scoped-set-ids-force-set tokenscript?]
           (when tokenscript?
-            (if (and tokens-status tokens-lib selected-token-set-id)
+            (cond
+              (and scoped-set-ids-force-set tokens-lib)
+              (ts/resolve-sets (cfo/get-token-sets-in-order tokens-lib scoped-set-ids-force-set))
+
+              (and tokens-status tokens-lib selected-token-set-id)
               (ts/resolve-sets (cfo/get-active-token-sets-force tokens-status tokens-lib selected-token-set-id))
+
+              :else
               {})))
 
         resolved-active-tokens-force-set
