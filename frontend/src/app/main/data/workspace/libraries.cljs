@@ -657,7 +657,8 @@
                      (merge (meta it))))
                 (dwu/start-undo-transaction undo-id)
                 (dch/commit-changes changes)
-                (dwtp/propagate-workspace-tokens)  ;; Make the new instance get the token values from the current file, not from the component's library
+                ;; Make the new instance get the token values from the current file, not from the component's library
+                (dwtp/propagate-workspace-tokens {:page-id (:id page) :root-ids [(:id new-shape)]})
                 (ptk/data-event :layout/update {:ids [(:id new-shape)]})
                 (dws/select-shapes (d/ordered-set (:id new-shape)))
                 (when start-move?
@@ -1115,7 +1116,8 @@
         (rx/of
          (dwu/start-undo-transaction undo-id)
          (dch/commit-changes changes)
-         (dwtp/propagate-workspace-tokens)  ;; Make the new instance get the token values from the current file, not from the component's library
+         ;; Make the new instance get the token values from the current file, not from the component's library
+         (dwtp/propagate-workspace-tokens {:page-id (:id page) :root-ids [(:id new-shape)]})
          (when (and (features/active-feature? state "render-wasm/v1")
                     (seq new-text-ids))
            (dwwt/resize-wasm-text-all new-text-ids {:skip-component-sync? true}))
