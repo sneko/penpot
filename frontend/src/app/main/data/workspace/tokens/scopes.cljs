@@ -21,7 +21,6 @@
    [app.main.data.helpers :as dsh]
    [app.main.data.workspace.shapes :as dwsh]
    [app.main.data.workspace.tokens.propagation :as dwtp]
-   [app.main.data.workspace.undo :as dwu]
    [beicon.v2.core :as rx]
    [clojure.string :as cstr]
    [potok.v2.core :as ptk]))
@@ -322,43 +321,6 @@
                         (every? #(ineffective-for-root? group %) uses))))
           groups)))
 
-(defn- with-propagation
-  "`event`, which changes scopes, and the propagation of the tokens that
-  resolve differently because of it, as a single undo entry: undoing it
-  brings the scopes back too, not only the values. Only the shapes of
-  `scope` (see `dwtp/propagate-workspace-tokens`) and their children can
-  resolve differently.
-
-  The texts whose size changes are resized asynchronously, after the
-  propagation: the entry is closed once the propagation is done and the
-  changes stop for a moment, so that one undo reverts them too. Closing
-  it early matters: an undo does nothing while it is open."
-  [event scope]
-  (ptk/reify ::with-propagation
-    ptk/WatchEvent
-    (watch [_ _ stream]
-      (let [undo-id (js/Symbol)]
-        ;; Listening first: the propagation can run synchronously, when
-        ;; its tokens are already resolved
-        (rx/merge
-         (->> (rx/merge
-               ;; The propagation closes its own transaction when done
-               (->> stream
-                    (rx/filter (ptk/type? ::dwu/commit-undo-transaction))
-                    (rx/take 1)
-                    (rx/mapcat (fn [_]
-                                 (->> stream
-                                      (rx/filter (ptk/type? ::dch/commit-changes))
-                                      (rx/start-with nil)
-                                      (rx/debounce 300)))))
-               ;; Closed anyway when nothing comes, or keeps coming
-               (rx/timer 3000))
-              (rx/take 1)
-              (rx/map (fn [_] (dwu/commit-undo-transaction undo-id))))
-         (rx/of (dwu/start-undo-transaction undo-id :timeout false)
-                event
-                (dwtp/propagate-workspace-tokens scope)))))))
-
 (defn update-page-token-scope
   "Sets the token scope of the page `page-id` (the current one with nil)
   to `f` of it, and propagates. A page without one starts empty, so it
@@ -373,7 +335,7 @@
             scope   (:token-scope page)
             scope'  (update-scope scope f)]
         (when (not= scope scope')
-          (rx/of (with-propagation
+          (rx/of (dwtp/with-propagation
                    (dch/commit-changes
                     (-> (pcb/empty-changes it)
                         (pcb/with-page page)
@@ -401,7 +363,7 @@
       (let [tokens-lib (dsh/lookup-tokens-lib state)
             page-id    (:current-page-id state)]
         (rx/of
-         (with-propagation
+         (dwtp/with-propagation
            (dwsh/update-shapes ids
                                (fn [shape]
                                  (let [before (:token-scope shape)
@@ -477,7 +439,7 @@
                       (dissoc :mode-overridden)
                       (assoc :overrides #{})))))]
         (rx/of
-         (with-propagation
+         (dwtp/with-propagation
            (dwsh/update-shapes shape-ids
                                (fn [shape]
                                  (if-let [scope (main-scope shape)]

@@ -17,11 +17,16 @@
    [app.main.data.workspace.tokens.library-edit :as dwtl]
    [app.main.data.workspace.tokens.propagation :as dwtp]
    [app.main.data.workspace.tokens.scopes :as dwts]
+   [app.main.data.workspace.undo :as dwu]
+   [app.main.store :as st]
    [cljs.test :as t :include-macros true]
+   [frontend-tests.helpers.async :as async]
+   [frontend-tests.helpers.mock :as mock]
    [frontend-tests.helpers.pages :as thp]
    [frontend-tests.helpers.state :as ths]
    [frontend-tests.helpers.wasm :as thw]
-   [frontend-tests.tokens.helpers.state :as tohs]))
+   [frontend-tests.tokens.helpers.state :as tohs]
+   [potok.v2.core :as ptk]))
 
 (def ^:private original-flags cf/flags)
 
@@ -171,3 +176,26 @@
       (t/is (= {} (dwts/masked-group-tokens status lib objects
                                             [(update root :scope assoc :themes #{(cthi/id :desktop)})]
                                             "Platform"))))))
+
+(t/deftest ^:async test-undo-theme-change-at-once
+  (t/testing "one undo brings back the active theme and the values it propagated"
+    (let [file  (setup-file)
+          store (ths/setup-store file)
+          state #(deref store)
+          theme #(-> (ths/get-file-from-state (state)) ctht/get-tokens-status ctos/get-active-theme-ids)]
+      (await
+       (mock/with-mocks* {st/state store st/stream (ptk/input-stream store)}
+         (st/emit! (tohs/watch-undo-stack)
+                   (dwtp/propagate-workspace-tokens))
+         (await (async/wait-for #(= 8 (radius (state) :rect-mobile)) "file propagated"))
+         (st/emit! dwu/reinitialize-undo
+                   (dwtl/set-token-theme-active (cthi/id :desktop) true))
+         (await (async/wait-for #(and (= 16 (radius (state) :rect-mobile))
+                                      (seq (get-in (state) [:workspace-undo :items])))
+                                "theme changed"))
+         (t/is (contains? (theme) (cthi/id :desktop)))
+         (t/is (not (contains? (theme) (cthi/id :mobile))))
+         (st/emit! dwu/undo)
+         (await (async/wait-for #(= 8 (radius (state) :rect-mobile)) "undone"))
+         (t/is (contains? (theme) (cthi/id :mobile)))
+         (t/is (not (contains? (theme) (cthi/id :desktop)))))))))
